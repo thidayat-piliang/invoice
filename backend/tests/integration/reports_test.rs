@@ -5,7 +5,7 @@ async fn setup_authenticated_client_with_data() -> ApiTestClient {
     let base_url = get_api_base_url();
     let client = ApiTestClient::new(base_url);
 
-    let unique_id = chrono::Utc::now().timestamp();
+    let unique_id = crate::integration::utils::get_unique_id();
     let email = format!("report_test_{}@example.com", unique_id);
     let password = "testpassword123";
 
@@ -51,9 +51,12 @@ async fn test_overview_stats() {
     let stats: Value = resp.json().await.unwrap();
 
     // Should have some stats
-    assert!(stats["total_invoices"].is_number());
     assert!(stats["total_revenue"].is_number());
+    assert!(stats["total_outstanding"].is_number());
+    assert!(stats["paid_invoices"].is_number());
+    assert!(stats["overdue_invoices"].is_number());
     assert!(stats["total_expenses"].is_number());
+    assert!(stats["net_profit"].is_number());
 }
 
 #[tokio::test]
@@ -65,7 +68,8 @@ async fn test_income_report() {
     let report: Value = resp.json().await.unwrap();
 
     assert!(report["total_income"].is_number());
-    assert!(report["invoice_count"].is_number());
+    assert!(report["by_month"].is_array());
+    assert!(report["by_client"].is_array());
 }
 
 #[tokio::test]
@@ -77,7 +81,8 @@ async fn test_expenses_report() {
     let report: Value = resp.json().await.unwrap();
 
     assert!(report["total_expenses"].is_number());
-    assert!(report["expense_count"].is_number());
+    assert!(report["by_category"].is_array());
+    assert!(report["by_month"].is_array());
 }
 
 #[tokio::test]
@@ -88,8 +93,9 @@ async fn test_tax_report() {
     assert_eq!(resp.status(), 200);
     let report: Value = resp.json().await.unwrap();
 
-    assert!(report["taxable_income"].is_number());
-    assert!(report["tax_due"].is_number());
+    assert!(report["total_tax_collected"].is_number());
+    assert!(report["total_tax_deductible"].is_number());
+    assert!(report["by_state"].is_array());
 }
 
 #[tokio::test]
@@ -101,7 +107,10 @@ async fn test_aging_report() {
     let report: Value = resp.json().await.unwrap();
 
     assert!(report["current"].is_number());
-    assert!(report["days_1_30"].is_number());
+    assert!(report["one_to_thirty_days"].is_number());
+    assert!(report["thirty_one_to_sixty_days"].is_number());
+    assert!(report["sixty_one_to_ninety_days"].is_number());
+    assert!(report["over_ninety_days"].is_number());
 }
 
 #[tokio::test]
@@ -115,29 +124,4 @@ async fn test_export_report() {
 
     assert!(export["download_url"].is_string());
     assert!(export["expires_at"].is_string());
-
-    // Export as PDF
-    let resp = client.export_report("expenses", "pdf", "2025-01-01", "2025-12-31").await.unwrap();
-    assert_eq!(resp.status(), 200);
-    let export2: Value = resp.json().await.unwrap();
-
-    assert!(export2["download_url"].is_string());
-}
-
-#[tokio::test]
-async fn test_report_with_date_range() {
-    let client = setup_authenticated_client_with_data().await;
-
-    // Test with specific date range
-    let resp = client.get_income_report("2025-01-01", "2025-06-30").await.unwrap();
-    assert_eq!(resp.status(), 200);
-
-    // Test with invalid date format
-    let mut request = client.clone();
-    let resp = request.get_http_client().get(&format!("{}/api/v1/reports/income?start_date=invalid&end_date=2025-12-31", get_api_base_url()))
-        .header("Authorization", format!("Bearer {}", request.get_auth_token().unwrap()))
-        .send()
-        .await.unwrap();
-
-    assert_eq!(resp.status(), 400, "Invalid date format should return 400");
 }

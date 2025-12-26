@@ -20,3 +20,12 @@
 
 pub mod test_client;
 pub mod utils;
+pub mod auth_test;
+pub mod clients_test;
+pub mod invoices_test;
+pub mod payments_test;
+pub mod expenses_test;
+pub mod reports_test;
+pub mod settings_test;
+pub mod advanced_features_test;
+pub mod tax_test;

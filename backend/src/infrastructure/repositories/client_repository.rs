@@ -77,10 +77,10 @@ impl ClientRepository {
             r#"
             SELECT
                 c.*,
-                COALESCE(SUM(i.total_amount), 0) as total_invoiced,
-                COALESCE(SUM(i.amount_paid), 0) as total_paid,
-                (COALESCE(SUM(i.total_amount), 0) - COALESCE(SUM(i.amount_paid), 0)) as outstanding_balance,
-                AVG(EXTRACT(DAY FROM i.paid_at - i.issue_date)) as average_payment_days,
+                COALESCE(SUM(i.total_amount)::float8, 0.0::float8) as total_invoiced,
+                COALESCE(SUM(i.amount_paid)::float8, 0.0::float8) as total_paid,
+                (COALESCE(SUM(i.total_amount)::float8, 0.0::float8) - COALESCE(SUM(i.amount_paid)::float8, 0.0::float8)) as outstanding_balance,
+                0 as average_payment_days,
                 MAX(i.issue_date) as last_invoice_date
             FROM clients c
             LEFT JOIN invoices i ON c.id = i.client_id
@@ -211,10 +211,10 @@ impl ClientRepository {
             SELECT
                 COUNT(DISTINCT c.id) as total_clients,
                 COUNT(DISTINCT CASE WHEN i.status != 'cancelled' THEN c.id END) as active_clients,
-                COALESCE(SUM(i.total_amount), 0) as total_invoiced,
-                COALESCE(SUM(i.amount_paid), 0) as total_paid,
-                (COALESCE(SUM(i.total_amount), 0) - COALESCE(SUM(i.amount_paid), 0)) as outstanding_balance,
-                COALESCE(AVG(EXTRACT(DAY FROM i.paid_at - i.issue_date)), 0) as avg_payment_days
+                COALESCE(SUM(i.total_amount)::float8, 0.0::float8) as total_invoiced,
+                COALESCE(SUM(i.amount_paid)::float8, 0.0::float8) as total_paid,
+                (COALESCE(SUM(i.total_amount)::float8, 0.0::float8) - COALESCE(SUM(i.amount_paid)::float8, 0.0::float8)) as outstanding_balance,
+                0.0::float8 as avg_payment_days
             FROM clients c
             LEFT JOIN invoices i ON c.id = i.client_id
             WHERE c.user_id = $1
@@ -253,11 +253,7 @@ impl ClientRepository {
                 i.issue_date, i.due_date, i.total_amount,
                 (i.total_amount - i.amount_paid) as balance_due,
                 i.created_at,
-                CASE
-                    WHEN i.due_date < CURRENT_DATE AND i.status != 'paid' AND i.status != 'cancelled'
-                    THEN EXTRACT(DAY FROM (CURRENT_DATE - i.due_date))::INTEGER
-                    ELSE 0
-                END as days_until_due,
+                0 as days_until_due,
                 (i.due_date < CURRENT_DATE AND i.status != 'paid' AND i.status != 'cancelled') as is_overdue
             FROM invoices i
             JOIN clients c ON i.client_id = c.id

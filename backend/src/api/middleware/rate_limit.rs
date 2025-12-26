@@ -14,13 +14,16 @@ use nonzero_ext::nonzero;
 use std::sync::Arc;
 use std::time::Duration;
 
+use crate::domain::services::RedisService;
+
 #[derive(Clone)]
 pub struct RateLimitMiddleware {
     limiter: Arc<RateLimiter<String, DefaultKeyedStateStore<String>, DefaultClock>>,
+    redis: Option<Arc<RedisService>>,
 }
 
 impl RateLimitMiddleware {
-    pub fn new() -> Self {
+    pub fn new(redis: Option<Arc<RedisService>>) -> Self {
         // 100 requests per minute per IP
         let quota = Quota::per_minute(nonzero!(100u32));
         let limiter = Arc::new(RateLimiter::<
@@ -29,11 +32,29 @@ impl RateLimitMiddleware {
             DefaultClock,
         >::keyed(quota));
 
-        Self { limiter }
+        Self { limiter, redis }
     }
 
     pub async fn check_rate_limit(&self, key: &str) -> bool {
-        self.limiter.check_key(&key.to_string()).is_ok()
+        // First check in-memory limiter
+        if !self.limiter.check_key(&key.to_string()).is_ok() {
+            return false;
+        }
+
+        // If Redis is available, also track in Redis for distributed rate limiting
+        if let Some(redis) = &self.redis {
+            let redis_key = format!("rate_limit:{}", key);
+            if let Ok(count) = redis.increment(&redis_key).await {
+                if count == 1 {
+                    // Set 60 second expiration on first request
+                    let _ = redis.expire(&redis_key, 60).await;
+                }
+                // Allow up to 150 requests per minute in Redis
+                return count <= 150;
+            }
+        }
+
+        true
     }
 }
 
@@ -56,7 +77,7 @@ pub async fn rate_limit_middleware(
         .unwrap_or_else(|| "unknown".to_string());
 
     // Check rate limit
-    let rate_limiter = RateLimitMiddleware::new();
+    let rate_limiter = RateLimitMiddleware::new(None);
     if !rate_limiter.check_rate_limit(&ip).await {
         return Err(StatusCode::TOO_MANY_REQUESTS);
     }

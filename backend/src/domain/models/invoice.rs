@@ -5,7 +5,8 @@ use uuid::Uuid;
 use validator::Validate;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Type, PartialEq)]
-#[sqlx(type_name = "varchar")]
+#[sqlx(type_name = "varchar", rename_all = "lowercase")]
+#[serde(rename_all = "lowercase")]
 pub enum InvoiceStatus {
     Draft,
     Sent,
@@ -52,7 +53,7 @@ pub struct InvoiceItem {
 
 impl InvoiceItem {
     pub fn calculate(&mut self) {
-        self.tax_amount = (self.quantity * self.unit_price) * (self.tax_rate / 100.0);
+        self.tax_amount = (self.quantity * self.unit_price) * self.tax_rate;
         self.total = (self.quantity * self.unit_price) + self.tax_amount;
     }
 }
@@ -83,6 +84,8 @@ pub struct Invoice {
 
     pub tax_calculation: serde_json::Value,
     pub tax_included: bool,
+    pub tax_label: Option<String>,  // Snapshot of tax label
+    pub tax_id: Option<String>,     // Optional tax ID
 
     pub pdf_url: Option<String>,
     pub receipt_image_url: Option<String>,
@@ -150,6 +153,8 @@ pub struct CreateInvoice {
     pub discount_amount: Option<f64>,
     pub tax_included: bool,
     pub send_immediately: bool,
+    pub tax_label: Option<String>,  // Optional custom tax label
+    pub tax_id: Option<String>,     // Optional tax ID
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
@@ -200,7 +205,7 @@ pub struct InvoiceResponse {
     pub due_date: NaiveDate,
     pub total_amount: f64,
     pub balance_due: f64,
-    pub days_until_due: i64,
+    pub days_until_due: i32,
     pub is_overdue: bool,
     pub created_at: DateTime<Utc>,
 }
@@ -247,11 +252,14 @@ pub struct InvoiceDetailResponse {
     pub terms: Option<String>,
     pub tax_calculation: serde_json::Value,
     pub tax_included: bool,
+    pub tax_label: Option<String>,
+    pub tax_id: Option<String>,
     pub pdf_url: Option<String>,
     pub receipt_image_url: Option<String>,
     pub sent_at: Option<DateTime<Utc>>,
     pub paid_at: Option<DateTime<Utc>>,
     pub reminder_sent_count: i32,
+    pub last_reminder_sent: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -283,11 +291,14 @@ impl FromRow<'_, sqlx::postgres::PgRow> for InvoiceDetailResponse {
             terms: row.try_get("terms")?,
             tax_calculation: row.try_get("tax_calculation")?,
             tax_included: row.try_get("tax_included")?,
+            tax_label: row.try_get("tax_label")?,
+            tax_id: row.try_get("tax_id")?,
             pdf_url: row.try_get("pdf_url")?,
             receipt_image_url: row.try_get("receipt_image_url")?,
             sent_at: row.try_get("sent_at")?,
             paid_at: row.try_get("paid_at")?,
             reminder_sent_count: row.try_get("reminder_sent_count")?,
+            last_reminder_sent: row.try_get("last_reminder_sent")?,
             created_at: row.try_get("created_at")?,
             updated_at: row.try_get("updated_at")?,
         })

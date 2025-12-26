@@ -47,14 +47,6 @@ pub struct UpdateProfileCommand {
 
 // Output DTOs
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AuthTokenDto {
-    pub access_token: String,
-    pub refresh_token: String,
-    pub token_type: String,
-    pub expires_in: i64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AuthenticatedUserDto {
     pub id: Uuid,
     pub email: String,
@@ -64,7 +56,10 @@ pub struct AuthenticatedUserDto {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AuthResultDto {
-    pub token: AuthTokenDto,
+    pub access_token: String,
+    pub refresh_token: String,
+    pub token_type: String,
+    pub expires_in: i64,
     pub user: AuthenticatedUserDto,
 }
 

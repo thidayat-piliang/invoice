@@ -86,7 +86,10 @@ impl From<crate::domain::services::AuthError> for ApiError {
             crate::domain::services::AuthError::InvalidCredentials => ApiError::InvalidCredentials,
             crate::domain::services::AuthError::TokenExpired => ApiError::Unauthorized,
             crate::domain::services::AuthError::InvalidToken => ApiError::Unauthorized,
-            _ => ApiError::Internal,
+            crate::domain::services::AuthError::Validation(msg) => ApiError::Validation(msg),
+            crate::domain::services::AuthError::DatabaseError(msg) => ApiError::Database(msg),
+            crate::domain::services::AuthError::UserNotFound => ApiError::NotFound,
+            crate::domain::services::AuthError::HashingFailed => ApiError::Internal,
         }
     }
 }
@@ -99,8 +102,14 @@ impl From<crate::domain::services::InvoiceError> for ApiError {
             crate::domain::services::InvoiceError::InvalidStatus(msg) => ApiError::BadRequest(msg),
             crate::domain::services::InvoiceError::DatabaseError(msg) => ApiError::Database(msg),
             crate::domain::services::InvoiceError::Validation(msg) => ApiError::Validation(msg),
-            crate::domain::services::InvoiceError::PdfGenerationError(_) => ApiError::Internal,
-            crate::domain::services::InvoiceError::EmailError(_) => ApiError::Internal,
+            crate::domain::services::InvoiceError::PdfGenerationError(msg) => {
+                tracing::error!("PDF generation error: {}", msg);
+                ApiError::Internal
+            }
+            crate::domain::services::InvoiceError::EmailError(msg) => {
+                tracing::error!("Email error: {}", msg);
+                ApiError::Internal
+            }
         }
     }
 }
@@ -109,6 +118,10 @@ impl From<crate::application::use_cases::ReportError> for ApiError {
     fn from(err: crate::application::use_cases::ReportError) -> Self {
         match err {
             crate::application::use_cases::ReportError::DatabaseError(msg) => ApiError::Database(msg),
+            crate::application::use_cases::ReportError::ExportError(msg) => {
+                tracing::error!("Export error: {}", msg);
+                ApiError::Internal
+            }
         }
     }
 }
@@ -145,6 +158,19 @@ impl From<crate::application::use_cases::ExpenseError> for ApiError {
         match err {
             crate::application::use_cases::ExpenseError::NotFound => ApiError::NotFound,
             crate::application::use_cases::ExpenseError::DatabaseError(msg) => ApiError::Database(msg),
+        }
+    }
+}
+
+impl From<crate::domain::services::TaxError> for ApiError {
+    fn from(err: crate::domain::services::TaxError) -> Self {
+        match err {
+            crate::domain::services::TaxError::InvalidRate(msg) => ApiError::BadRequest(msg),
+            crate::domain::services::TaxError::NotFound => ApiError::NotFound,
+            crate::domain::services::TaxError::AlreadyExists => ApiError::BadRequest("Tax setting already exists".to_string()),
+            crate::domain::services::TaxError::DefaultAlreadyExists => ApiError::BadRequest("Default tax already exists".to_string()),
+            crate::domain::services::TaxError::DatabaseError(msg) => ApiError::Database(msg),
+            crate::domain::services::TaxError::Validation(msg) => ApiError::Validation(msg),
         }
     }
 }

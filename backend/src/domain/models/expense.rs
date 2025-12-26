@@ -6,8 +6,10 @@ use validator::Validate;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
 #[sqlx(type_name = "varchar")]
+#[serde(rename_all = "snake_case")]
 pub enum ExpenseCategory {
     Supplies,
+    OfficeSupplies,
     Travel,
     Equipment,
     Software,
@@ -20,6 +22,7 @@ impl std::fmt::Display for ExpenseCategory {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             ExpenseCategory::Supplies => write!(f, "supplies"),
+            ExpenseCategory::OfficeSupplies => write!(f, "office_supplies"),
             ExpenseCategory::Travel => write!(f, "travel"),
             ExpenseCategory::Equipment => write!(f, "equipment"),
             ExpenseCategory::Software => write!(f, "software"),

@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use uuid::Uuid;
 use chrono::NaiveDate;
-use serde::Serialize;
+use serde::{Serialize, Deserialize};
 
 use crate::domain::models::InvoiceStatus;
 
@@ -38,7 +38,7 @@ pub trait ReportRepository: Send + Sync {
     async fn get_aging_report(&self, user_id: Uuid) -> Result<AgingReport, sqlx::Error>;
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OverviewStats {
     pub total_revenue: f64,
     pub total_outstanding: f64,
@@ -48,21 +48,21 @@ pub struct OverviewStats {
     pub net_profit: f64,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IncomeReport {
     pub total_income: f64,
     pub by_month: Vec<IncomeByMonth>,
     pub by_client: Vec<IncomeByClient>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IncomeByMonth {
     pub month: String,
     pub amount: f64,
     pub invoice_count: i64,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IncomeByClient {
     pub client_id: Uuid,
     pub client_name: String,
@@ -70,39 +70,39 @@ pub struct IncomeByClient {
     pub invoice_count: i64,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExpensesReport {
     pub total_expenses: f64,
     pub by_category: Vec<ExpensesByCategory>,
     pub by_month: Vec<ExpensesByMonth>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExpensesByCategory {
     pub category: String,
     pub amount: f64,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExpensesByMonth {
     pub month: String,
     pub amount: f64,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TaxReport {
     pub total_tax_collected: f64,
     pub total_tax_deductible: f64,
     pub by_state: Vec<TaxByState>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TaxByState {
     pub state_code: String,
     pub tax_amount: f64,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgingReport {
     pub current: f64,
     pub one_to_thirty_days: f64,

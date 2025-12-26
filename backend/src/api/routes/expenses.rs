@@ -47,9 +47,9 @@ pub fn create_router(
     Router::new()
         .route("/", get(list_expenses))
         .route("/", post(create_expense))
-        .route("/:id", get(get_expense))
-        .route("/:id", put(update_expense))
-        .route("/:id", delete(delete_expense))
+        .route("/{id}", get(get_expense))
+        .route("/{id}", put(update_expense))
+        .route("/{id}", delete(delete_expense))
         .route("/stats", get(get_expense_stats))
         .with_state(state)
 }

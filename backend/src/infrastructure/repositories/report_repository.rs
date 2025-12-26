@@ -24,7 +24,7 @@ impl ReportRepository for ReportRepositoryImpl {
     async fn get_overview_stats(&self, user_id: Uuid) -> Result<OverviewStats, sqlx::Error> {
         // Total revenue (paid invoices)
         let total_revenue: f64 = sqlx::query_scalar(
-            "SELECT COALESCE(SUM(total_amount), 0.0) FROM invoices WHERE user_id = $1 AND status = 'paid'"
+            "SELECT COALESCE(SUM(total_amount)::float8, 0.0::float8) FROM invoices WHERE user_id = $1 AND status = 'paid'"
         )
         .bind(user_id)
         .fetch_one(&self.db)
@@ -32,7 +32,7 @@ impl ReportRepository for ReportRepositoryImpl {
 
         // Total outstanding (sent/partial/overdue invoices)
         let total_outstanding: f64 = sqlx::query_scalar(
-            "SELECT COALESCE(SUM(total_amount - amount_paid), 0.0) FROM invoices WHERE user_id = $1 AND status IN ('sent', 'partial', 'overdue')"
+            "SELECT COALESCE(SUM(total_amount - amount_paid)::float8, 0.0::float8) FROM invoices WHERE user_id = $1 AND status IN ('sent', 'partial', 'overdue')"
         )
         .bind(user_id)
         .fetch_one(&self.db)
@@ -78,7 +78,7 @@ impl ReportRepository for ReportRepositoryImpl {
     ) -> Result<IncomeReport, sqlx::Error> {
         // Total income
         let total_income: f64 = sqlx::query_scalar(
-            "SELECT COALESCE(SUM(total_amount), 0.0) FROM invoices WHERE user_id = $1 AND status = 'paid' AND issue_date BETWEEN $2 AND $3"
+            "SELECT COALESCE(SUM(total_amount)::float8, 0.0::float8) FROM invoices WHERE user_id = $1 AND status = 'paid' AND issue_date BETWEEN $2 AND $3"
         )
         .bind(user_id)
         .bind(start_date)
@@ -91,7 +91,7 @@ impl ReportRepository for ReportRepositoryImpl {
             r#"
             SELECT
                 TO_CHAR(issue_date, 'YYYY-MM') as month,
-                SUM(total_amount) as amount,
+                SUM(total_amount)::float8 as amount,
                 COUNT(*) as invoice_count
             FROM invoices
             WHERE user_id = $1 AND status = 'paid' AND issue_date BETWEEN $2 AND $3
@@ -120,7 +120,7 @@ impl ReportRepository for ReportRepositoryImpl {
             SELECT
                 c.id as client_id,
                 c.name as client_name,
-                SUM(i.total_amount) as total_amount,
+                SUM(i.total_amount)::float8 as total_amount,
                 COUNT(*) as invoice_count
             FROM invoices i
             JOIN clients c ON i.client_id = c.id
@@ -175,7 +175,7 @@ impl ReportRepository for ReportRepositoryImpl {
     ) -> Result<TaxReport, sqlx::Error> {
         // Total tax collected
         let total_tax_collected: f64 = sqlx::query_scalar(
-            "SELECT COALESCE(SUM(tax_amount), 0.0) FROM invoices WHERE user_id = $1 AND status = 'paid' AND issue_date BETWEEN $2 AND $3"
+            "SELECT COALESCE(SUM(tax_amount)::float8, 0.0::float8) FROM invoices WHERE user_id = $1 AND status = 'paid' AND issue_date BETWEEN $2 AND $3"
         )
         .bind(user_id)
         .bind(start_date)
@@ -191,7 +191,7 @@ impl ReportRepository for ReportRepositoryImpl {
             r#"
             SELECT
                 COALESCE(c.billing_address->>'state', 'Unknown') as state_code,
-                SUM(i.tax_amount) as tax_amount
+                SUM(i.tax_amount)::float8 as tax_amount
             FROM invoices i
             JOIN clients c ON i.client_id = c.id
             WHERE i.user_id = $1 AND i.status = 'paid' AND i.issue_date BETWEEN $2 AND $3
@@ -225,7 +225,7 @@ impl ReportRepository for ReportRepositoryImpl {
 
         // Current (not yet due)
         let current: f64 = sqlx::query_scalar(
-            "SELECT COALESCE(SUM(total_amount - amount_paid), 0.0) FROM invoices WHERE user_id = $1 AND status IN ('sent', 'partial') AND due_date >= $2"
+            "SELECT COALESCE(SUM(total_amount - amount_paid)::float8, 0.0::float8) FROM invoices WHERE user_id = $1 AND status IN ('sent', 'partial') AND due_date >= $2"
         )
         .bind(user_id)
         .bind(today)
@@ -234,7 +234,7 @@ impl ReportRepository for ReportRepositoryImpl {
 
         // 1-30 days overdue
         let one_to_thirty_days: f64 = sqlx::query_scalar(
-            "SELECT COALESCE(SUM(total_amount - amount_paid), 0.0) FROM invoices WHERE user_id = $1 AND status IN ('overdue', 'partial') AND due_date < $2 AND due_date >= $3"
+            "SELECT COALESCE(SUM(total_amount - amount_paid)::float8, 0.0::float8) FROM invoices WHERE user_id = $1 AND status IN ('overdue', 'partial') AND due_date < $2 AND due_date >= $3"
         )
         .bind(user_id)
         .bind(today)
@@ -244,7 +244,7 @@ impl ReportRepository for ReportRepositoryImpl {
 
         // 31-60 days overdue
         let thirty_one_to_sixty_days: f64 = sqlx::query_scalar(
-            "SELECT COALESCE(SUM(total_amount - amount_paid), 0.0) FROM invoices WHERE user_id = $1 AND status IN ('overdue', 'partial') AND due_date < $2 AND due_date >= $3"
+            "SELECT COALESCE(SUM(total_amount - amount_paid)::float8, 0.0::float8) FROM invoices WHERE user_id = $1 AND status IN ('overdue', 'partial') AND due_date < $2 AND due_date >= $3"
         )
         .bind(user_id)
         .bind(today - chrono::Duration::days(30))
@@ -254,7 +254,7 @@ impl ReportRepository for ReportRepositoryImpl {
 
         // 61-90 days overdue
         let sixty_one_to_ninety_days: f64 = sqlx::query_scalar(
-            "SELECT COALESCE(SUM(total_amount - amount_paid), 0.0) FROM invoices WHERE user_id = $1 AND status IN ('overdue', 'partial') AND due_date < $2 AND due_date >= $3"
+            "SELECT COALESCE(SUM(total_amount - amount_paid)::float8, 0.0::float8) FROM invoices WHERE user_id = $1 AND status IN ('overdue', 'partial') AND due_date < $2 AND due_date >= $3"
         )
         .bind(user_id)
         .bind(today - chrono::Duration::days(60))
@@ -264,7 +264,7 @@ impl ReportRepository for ReportRepositoryImpl {
 
         // Over 90 days overdue
         let over_ninety_days: f64 = sqlx::query_scalar(
-            "SELECT COALESCE(SUM(total_amount - amount_paid), 0.0) FROM invoices WHERE user_id = $1 AND status IN ('overdue', 'partial') AND due_date < $2"
+            "SELECT COALESCE(SUM(total_amount - amount_paid)::float8, 0.0::float8) FROM invoices WHERE user_id = $1 AND status IN ('overdue', 'partial') AND due_date < $2"
         )
         .bind(user_id)
         .bind(today - chrono::Duration::days(90))

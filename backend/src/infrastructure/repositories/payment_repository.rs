@@ -192,13 +192,13 @@ impl PaymentRepository {
             r#"
             SELECT
                 COUNT(*) as total_payments,
-                COALESCE(SUM(amount), 0) as total_amount,
-                COALESCE(AVG(amount), 0) as avg_payment,
-                COALESCE(SUM(CASE WHEN payment_method = 'stripe' THEN amount END), 0) as stripe_total,
-                COALESCE(SUM(CASE WHEN payment_method = 'paypal' THEN amount END), 0) as paypal_total,
-                COALESCE(SUM(CASE WHEN payment_method = 'check' THEN amount END), 0) as check_total,
-                COALESCE(SUM(CASE WHEN payment_method = 'cash' THEN amount END), 0) as cash_total,
-                COALESCE(SUM(CASE WHEN payment_method = 'bank_transfer' THEN amount END), 0) as bank_transfer_total
+                COALESCE(SUM(amount)::float8, 0.0::float8) as total_amount,
+                COALESCE(AVG(amount)::float8, 0.0::float8) as avg_payment,
+                COALESCE(SUM(CASE WHEN payment_method = 'stripe' THEN amount END)::float8, 0.0::float8) as stripe_total,
+                COALESCE(SUM(CASE WHEN payment_method = 'paypal' THEN amount END)::float8, 0.0::float8) as paypal_total,
+                COALESCE(SUM(CASE WHEN payment_method = 'check' THEN amount END)::float8, 0.0::float8) as check_total,
+                COALESCE(SUM(CASE WHEN payment_method = 'cash' THEN amount END)::float8, 0.0::float8) as cash_total,
+                COALESCE(SUM(CASE WHEN payment_method = 'bank_transfer' THEN amount END)::float8, 0.0::float8) as bank_transfer_total
             FROM payments
             WHERE user_id = $1 AND status = 'completed'
             "#,

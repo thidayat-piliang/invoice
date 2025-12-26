@@ -1,16 +1,15 @@
 use axum::{
     routing::{get, put},
-    extract::State,
+    extract::{State},
     Json, Router,
 };
 use std::sync::Arc;
 
 use crate::api::error::ApiError;
 use crate::api::middleware::AuthUser;
-use crate::domain::models::{BusinessAddress, TaxSettings, NotificationSettings, InvoiceSettings};
-use crate::application::use_cases::{
+use crate::domain::models::{BusinessAddress, NotificationSettings, InvoiceSettings};
+use crate::application::settings_use_cases::{
     GetBusinessSettingsUseCase, UpdateBusinessSettingsUseCase,
-    GetTaxSettingsUseCase, UpdateTaxSettingsUseCase,
     GetNotificationSettingsUseCase, UpdateNotificationSettingsUseCase,
     GetInvoiceSettingsUseCase, UpdateInvoiceSettingsUseCase,
 };
@@ -19,8 +18,6 @@ use crate::application::use_cases::{
 struct SettingsState {
     get_business_uc: Arc<GetBusinessSettingsUseCase>,
     update_business_uc: Arc<UpdateBusinessSettingsUseCase>,
-    get_tax_uc: Arc<GetTaxSettingsUseCase>,
-    update_tax_uc: Arc<UpdateTaxSettingsUseCase>,
     get_notification_uc: Arc<GetNotificationSettingsUseCase>,
     update_notification_uc: Arc<UpdateNotificationSettingsUseCase>,
     get_invoice_uc: Arc<GetInvoiceSettingsUseCase>,
@@ -30,8 +27,6 @@ struct SettingsState {
 pub fn create_router(
     get_business_uc: Arc<GetBusinessSettingsUseCase>,
     update_business_uc: Arc<UpdateBusinessSettingsUseCase>,
-    get_tax_uc: Arc<GetTaxSettingsUseCase>,
-    update_tax_uc: Arc<UpdateTaxSettingsUseCase>,
     get_notification_uc: Arc<GetNotificationSettingsUseCase>,
     update_notification_uc: Arc<UpdateNotificationSettingsUseCase>,
     get_invoice_uc: Arc<GetInvoiceSettingsUseCase>,
@@ -40,8 +35,6 @@ pub fn create_router(
     let state = SettingsState {
         get_business_uc,
         update_business_uc,
-        get_tax_uc,
-        update_tax_uc,
         get_notification_uc,
         update_notification_uc,
         get_invoice_uc,
@@ -51,8 +44,6 @@ pub fn create_router(
     Router::new()
         .route("/business", get(get_business_settings))
         .route("/business", put(update_business_settings))
-        .route("/tax", get(get_tax_settings))
-        .route("/tax", put(update_tax_settings))
         .route("/notifications", get(get_notification_settings))
         .route("/notifications", put(update_notification_settings))
         .route("/invoice", get(get_invoice_settings))
@@ -111,39 +102,6 @@ async fn update_business_settings(
         phone: user.phone,
         email: user.email,
     }))
-}
-
-#[derive(serde::Serialize)]
-struct TaxSettingsResponse {
-    tax_settings: TaxSettings,
-    available_states: Vec<String>,
-}
-
-async fn get_tax_settings(
-    auth_user: AuthUser,
-    State(state): State<SettingsState>,
-) -> Result<Json<TaxSettingsResponse>, ApiError> {
-    let user = state.get_tax_uc.execute(auth_user.user_id).await?;
-    let tax_settings = user.tax_settings.unwrap_or_else(|| TaxSettings {
-        state_code: "CA".to_string(),
-        tax_rate: 7.25,
-        tax_exempt: false,
-        tax_id: None,
-    });
-
-    Ok(Json(TaxSettingsResponse {
-        tax_settings,
-        available_states: vec!["CA".to_string(), "NY".to_string(), "TX".to_string(), "FL".to_string()],
-    }))
-}
-
-async fn update_tax_settings(
-    auth_user: AuthUser,
-    State(state): State<SettingsState>,
-    Json(payload): Json<TaxSettings>,
-) -> Result<Json<TaxSettings>, ApiError> {
-    let user = state.update_tax_uc.execute(auth_user.user_id, payload.clone()).await?;
-    Ok(Json(user.tax_settings.unwrap_or(payload)))
 }
 
 async fn get_notification_settings(

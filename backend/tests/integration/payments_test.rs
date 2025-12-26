@@ -5,7 +5,7 @@ async fn setup_authenticated_client() -> ApiTestClient {
     let base_url = get_api_base_url();
     let client = ApiTestClient::new(base_url);
 
-    let unique_id = chrono::Utc::now().timestamp();
+    let unique_id = crate::integration::utils::get_unique_id();
     let email = format!("payment_test_{}@example.com", unique_id);
     let password = "testpassword123";
 
@@ -121,7 +121,7 @@ async fn test_partial_payment() {
     let resp = client.get_invoice(&invoice_id).await.unwrap();
     let updated_invoice: Value = resp.json().await.unwrap();
     assert_eq!(updated_invoice["amount_paid"], 500.0);
-    assert_eq!(updated_invoice["status"], "partially_paid");
+    assert_eq!(updated_invoice["status"], "partial");
 
     // Cleanup
     client.delete_invoice(&invoice_id).await.unwrap();

@@ -5,7 +5,7 @@ async fn setup_authenticated_client() -> ApiTestClient {
     let base_url = get_api_base_url();
     let client = ApiTestClient::new(base_url);
 
-    let unique_id = chrono::Utc::now().timestamp();
+    let unique_id = crate::integration::utils::get_unique_id();
     let email = format!("settings_test_{}@example.com", unique_id);
     let password = "testpassword123";
 

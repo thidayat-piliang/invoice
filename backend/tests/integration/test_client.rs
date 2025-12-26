@@ -92,7 +92,7 @@ impl ApiTestClient {
     }
 
     pub async fn update_profile(&self, phone: &str, company_name: &str) -> Result<reqwest::Response, reqwest::Error> {
-        let mut request = self.client.put(&format!("{}/api/v1/auth/profile", self.base_url))
+        let mut request = self.client.put(&format!("{}/api/v1/auth/me", self.base_url))
             .json(&serde_json::json!({
                 "phone": phone,
                 "company_name": company_name,
@@ -170,9 +170,14 @@ impl ApiTestClient {
 
     // Invoice endpoints
     pub async fn create_invoice(&self, client_id: &str, amount: f64) -> Result<reqwest::Response, reqwest::Error> {
+        let today = chrono::Utc::now().naive_utc().date();
+        let due_date = today + chrono::Duration::days(30);
+
         let mut request = self.client.post(&format!("{}/api/v1/invoices", self.base_url))
             .json(&serde_json::json!({
                 "client_id": client_id,
+                "issue_date": today,
+                "due_date": due_date,
                 "items": [
                     {
                         "description": "Test Service",
@@ -182,7 +187,9 @@ impl ApiTestClient {
                     }
                 ],
                 "notes": "Test invoice",
-                "terms": "Payment due in 30 days"
+                "terms": "Payment due in 30 days",
+                "tax_included": false,
+                "send_immediately": false
             }));
         if let Some(auth) = self.get_auth_header() {
             request = request.header("Authorization", auth);
@@ -243,7 +250,7 @@ impl ApiTestClient {
     }
 
     pub async fn send_reminder(&self, invoice_id: &str) -> Result<reqwest::Response, reqwest::Error> {
-        let mut request = self.client.post(&format!("{}/api/v1/invoices/{}/reminder", self.base_url, invoice_id))
+        let mut request = self.client.post(&format!("{}/api/v1/invoices/{}/remind", self.base_url, invoice_id))
             .json(&serde_json::json!({}));
         if let Some(auth) = self.get_auth_header() {
             request = request.header("Authorization", auth);
@@ -252,7 +259,7 @@ impl ApiTestClient {
     }
 
     pub async fn record_payment(&self, invoice_id: &str, amount: f64) -> Result<reqwest::Response, reqwest::Error> {
-        let mut request = self.client.post(&format!("{}/api/v1/invoices/{}/payments", self.base_url, invoice_id))
+        let mut request = self.client.post(&format!("{}/api/v1/invoices/{}/pay", self.base_url, invoice_id))
             .json(&serde_json::json!({
                 "amount": amount,
                 "payment_method": "cash",
@@ -329,7 +336,7 @@ impl ApiTestClient {
                 "vendor": vendor,
                 "description": "Test expense",
                 "date_incurred": "2025-01-01",
-                "tax_deductible": true,
+                "tax_deductible": true
             }));
         if let Some(auth) = self.get_auth_header() {
             request = request.header("Authorization", auth);
@@ -516,6 +523,60 @@ impl ApiTestClient {
                 "template": template,
                 "terms": terms,
                 "notes": notes,
+            }));
+        if let Some(auth) = self.get_auth_header() {
+            request = request.header("Authorization", auth);
+        }
+        request.send().await
+    }
+
+    // Metrics endpoint
+    pub async fn get_metrics(&self) -> Result<reqwest::Response, reqwest::Error> {
+        self.client.get(&format!("{}/metrics", self.base_url))
+            .send()
+            .await
+    }
+
+    // Payment Gateway endpoints
+    pub async fn create_stripe_payment_intent(&self, amount: f64, currency: &str) -> Result<reqwest::Response, reqwest::Error> {
+        let mut request = self.client.post(&format!("{}/api/v1/payments/stripe/intent", self.base_url))
+            .json(&serde_json::json!({
+                "amount": amount,
+                "currency": currency,
+            }));
+        if let Some(auth) = self.get_auth_header() {
+            request = request.header("Authorization", auth);
+        }
+        request.send().await
+    }
+
+    pub async fn create_paypal_order(&self, amount: f64, currency: &str) -> Result<reqwest::Response, reqwest::Error> {
+        let mut request = self.client.post(&format!("{}/api/v1/payments/paypal/order", self.base_url))
+            .json(&serde_json::json!({
+                "amount": amount,
+                "currency": currency,
+            }));
+        if let Some(auth) = self.get_auth_header() {
+            request = request.header("Authorization", auth);
+        }
+        request.send().await
+    }
+
+    pub async fn get_available_gateways(&self) -> Result<reqwest::Response, reqwest::Error> {
+        let mut request = self.client.get(&format!("{}/api/v1/payments/gateways", self.base_url));
+        if let Some(auth) = self.get_auth_header() {
+            request = request.header("Authorization", auth);
+        }
+        request.send().await
+    }
+
+    // Push notification endpoints
+    pub async fn send_push_notification(&self, user_id: &str, title: &str, body: &str) -> Result<reqwest::Response, reqwest::Error> {
+        let mut request = self.client.post(&format!("{}/api/v1/notifications/push", self.base_url))
+            .json(&serde_json::json!({
+                "user_id": user_id,
+                "title": title,
+                "body": body,
             }));
         if let Some(auth) = self.get_auth_header() {
             request = request.header("Authorization", auth);

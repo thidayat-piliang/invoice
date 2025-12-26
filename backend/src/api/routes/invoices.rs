@@ -52,13 +52,13 @@ pub fn create_router(
     Router::new()
         .route("/", get(list_invoices))
         .route("/", post(create_invoice))
-        .route("/:id", get(get_invoice))
-        .route("/:id", put(update_invoice))
-        .route("/:id", delete(delete_invoice))
-        .route("/:id/send", post(send_invoice))
-        .route("/:id/remind", post(send_reminder))
-        .route("/:id/pdf", get(get_pdf))
-        .route("/:id/pay", post(record_payment))
+        .route("/{id}", get(get_invoice))
+        .route("/{id}", put(update_invoice))
+        .route("/{id}", delete(delete_invoice))
+        .route("/{id}/send", post(send_invoice))
+        .route("/{id}/remind", post(send_reminder))
+        .route("/{id}/pdf", get(get_pdf))
+        .route("/{id}/pay", post(record_payment))
         .with_state(state)
 }
 
@@ -173,11 +173,11 @@ async fn record_payment(
     State(state): State<InvoiceState>,
     Path(invoice_id): Path<Uuid>,
     Json(payload): Json<RecordPaymentCommand>,
-) -> Result<Json<PaymentRecordedDto>, ApiError> {
+) -> Result<(StatusCode, Json<PaymentRecordedDto>), ApiError> {
     let response = state
         .record_payment_uc
         .execute(auth_user.user_id, invoice_id, payload)
         .await?;
 
-    Ok(Json(response))
+    Ok((StatusCode::CREATED, Json(response)))
 }

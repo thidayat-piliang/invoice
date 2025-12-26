@@ -210,6 +210,12 @@ impl EmailService {
         subject: &str,
         html_body: &str,
     ) -> Result<(), EmailError> {
+        // Check if we're in test mode - skip actual email sending
+        if std::env::var("TEST_MODE").is_ok() || std::env::var("SKIP_EMAIL").is_ok() {
+            tracing::info!("TEST_MODE: Skipping email send to {}", to_email);
+            return Ok(());
+        }
+
         let from_mailbox: Mailbox = format!("{} <{}>", self.config.from_name, self.config.from_email)
             .parse()
             .map_err(|_| EmailError::InvalidEmail)?;
@@ -254,6 +260,12 @@ impl EmailService {
         amount: f64,
         due_date: &str,
     ) -> Result<(), EmailError> {
+        // Check if we're in test mode - skip actual email sending
+        if std::env::var("TEST_MODE").is_ok() || std::env::var("SKIP_EMAIL").is_ok() {
+            tracing::info!("TEST_MODE: Skipping email send to {} for invoice {}", to_email, invoice_number);
+            return Ok(());
+        }
+
         let subject = format!("Invoice #{} - ${:.2}", invoice_number, amount);
 
         let html_body = format!(

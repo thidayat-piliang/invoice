@@ -30,6 +30,8 @@ mod integration {
     pub mod expenses_test;
     pub mod reports_test;
     pub mod settings_test;
+    pub mod advanced_features_test;
+    pub mod tax_test;
 }
 
 #[cfg(test)]

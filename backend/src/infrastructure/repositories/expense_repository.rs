@@ -219,16 +219,17 @@ impl ExpenseRepository {
         let row = sqlx::query(
             r#"
             SELECT
-                COALESCE(SUM(amount), 0) as total_expenses,
-                COALESCE(SUM(CASE WHEN tax_deductible THEN amount END), 0) as tax_deductible,
-                COALESCE(AVG(amount), 0) as monthly_average,
-                COALESCE(SUM(CASE WHEN category = 'supplies' THEN amount END), 0) as supplies,
-                COALESCE(SUM(CASE WHEN category = 'travel' THEN amount END), 0) as travel,
-                COALESCE(SUM(CASE WHEN category = 'equipment' THEN amount END), 0) as equipment,
-                COALESCE(SUM(CASE WHEN category = 'software' THEN amount END), 0) as software,
-                COALESCE(SUM(CASE WHEN category = 'marketing' THEN amount END), 0) as marketing,
-                COALESCE(SUM(CASE WHEN category = 'utilities' THEN amount END), 0) as utilities,
-                COALESCE(SUM(CASE WHEN category = 'other' THEN amount END), 0) as other
+                COALESCE(SUM(amount)::float8, 0.0::float8) as total_expenses,
+                COALESCE(SUM(CASE WHEN tax_deductible THEN amount END)::float8, 0.0::float8) as tax_deductible,
+                COALESCE(AVG(amount)::float8, 0.0::float8) as monthly_average,
+                COALESCE(SUM(CASE WHEN category = 'supplies' THEN amount END)::float8, 0.0::float8) as supplies,
+                COALESCE(SUM(CASE WHEN category = 'office_supplies' THEN amount END)::float8, 0.0::float8) as office_supplies,
+                COALESCE(SUM(CASE WHEN category = 'travel' THEN amount END)::float8, 0.0::float8) as travel,
+                COALESCE(SUM(CASE WHEN category = 'equipment' THEN amount END)::float8, 0.0::float8) as equipment,
+                COALESCE(SUM(CASE WHEN category = 'software' THEN amount END)::float8, 0.0::float8) as software,
+                COALESCE(SUM(CASE WHEN category = 'marketing' THEN amount END)::float8, 0.0::float8) as marketing,
+                COALESCE(SUM(CASE WHEN category = 'utilities' THEN amount END)::float8, 0.0::float8) as utilities,
+                COALESCE(SUM(CASE WHEN category = 'other' THEN amount END)::float8, 0.0::float8) as other
             FROM expenses
             WHERE user_id = $1
             "#,
@@ -239,6 +240,7 @@ impl ExpenseRepository {
 
         let mut by_category = std::collections::HashMap::new();
         by_category.insert("supplies".to_string(), row.get::<f64, _>("supplies"));
+        by_category.insert("office_supplies".to_string(), row.get::<f64, _>("office_supplies"));
         by_category.insert("travel".to_string(), row.get::<f64, _>("travel"));
         by_category.insert("equipment".to_string(), row.get::<f64, _>("equipment"));
         by_category.insert("software".to_string(), row.get::<f64, _>("software"));
@@ -274,13 +276,15 @@ struct ExpenseRow {
 impl ExpenseRow {
     fn to_expense(self) -> Expense {
         let category = match self.category.as_str() {
+            "supplies" => ExpenseCategory::Supplies,
+            "office_supplies" => ExpenseCategory::OfficeSupplies,
             "travel" => ExpenseCategory::Travel,
             "equipment" => ExpenseCategory::Equipment,
             "software" => ExpenseCategory::Software,
             "marketing" => ExpenseCategory::Marketing,
             "utilities" => ExpenseCategory::Utilities,
             "other" => ExpenseCategory::Other,
-            _ => ExpenseCategory::Supplies,
+            _ => ExpenseCategory::Other,
         };
 
         Expense {
@@ -301,13 +305,15 @@ impl ExpenseRow {
 
     fn to_expense_response(self) -> ExpenseResponse {
         let category = match self.category.as_str() {
+            "supplies" => ExpenseCategory::Supplies,
+            "office_supplies" => ExpenseCategory::OfficeSupplies,
             "travel" => ExpenseCategory::Travel,
             "equipment" => ExpenseCategory::Equipment,
             "software" => ExpenseCategory::Software,
             "marketing" => ExpenseCategory::Marketing,
             "utilities" => ExpenseCategory::Utilities,
             "other" => ExpenseCategory::Other,
-            _ => ExpenseCategory::Supplies,
+            _ => ExpenseCategory::Other,
         };
 
         ExpenseResponse {

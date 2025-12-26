@@ -12,11 +12,19 @@ use crate::domain::repositories::report_repository::{
 pub enum ReportError {
     #[error("Database error: {0}")]
     DatabaseError(String),
+    #[error("Export error: {0}")]
+    ExportError(String),
 }
 
 impl From<sqlx::Error> for ReportError {
     fn from(err: sqlx::Error) -> Self {
         ReportError::DatabaseError(err.to_string())
+    }
+}
+
+impl From<Box<dyn std::error::Error + Send + Sync>> for ReportError {
+    fn from(err: Box<dyn std::error::Error + Send + Sync>) -> Self {
+        ReportError::ExportError(err.to_string())
     }
 }
 
@@ -133,7 +141,7 @@ impl ExportReportUseCase {
         format: String,
         start_date: NaiveDate,
         end_date: NaiveDate,
-    ) -> Result<String, ReportError> {
+    ) -> Result<Vec<u8>, ReportError> {
         Ok(self.report_service.export_report(user_id, &report_type, &format, start_date, end_date).await?)
     }
 }

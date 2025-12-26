@@ -5,7 +5,7 @@ mod config;
 mod application;
 
 use axum::{
-    http::Method,
+    http::{Method, HeaderValue},
     routing::get,
     Extension, Router,
 };
@@ -13,13 +13,18 @@ use std::sync::Arc;
 use tower_http::{
     cors::{Any, CorsLayer},
     trace::TraceLayer,
+    set_header::SetResponseHeaderLayer,
+    limit::RequestBodyLimitLayer,
+    timeout::RequestBodyTimeoutLayer,
 };
+use std::time::Duration;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-use crate::api::routes::{auth, invoices, reports, settings, clients, payments, expenses};
-use crate::domain::services::{InvoiceService, AuthService, EmailService, EmailConfig, PdfService, ReportService, SettingsService, ClientService, PaymentService, ExpenseService};
+use crate::api::routes::{auth, invoices, reports, settings, clients, payments, expenses, metrics, files, tax};
+use crate::domain::services::{InvoiceService, AuthService, EmailService, EmailConfig, PdfService, ReportService, SettingsService, ClientService, PaymentService, ExpenseService, RedisService, MetricsService, FileService, NotificationService, TaxService};
 use crate::application::use_cases::*;
-use crate::infrastructure::repositories::{InvoiceRepository, ClientRepository, UserRepository, ReportRepositoryImpl, PaymentRepository, ExpenseRepository};
+use crate::infrastructure::repositories::{InvoiceRepository, ClientRepository, UserRepository, ReportRepositoryImpl, PaymentRepository, ExpenseRepository, TaxRepositoryImpl};
+use crate::domain::repositories::TaxRepository;
 
 #[tokio::main]
 async fn main() {
@@ -37,6 +42,20 @@ async fn main() {
         .unwrap_or_else(|_| "postgres://postgres:postgres@localhost:5432/flashbill".to_string());
     let jwt_secret = std::env::var("JWT_SECRET")
         .unwrap_or_else(|_| "your-secret-key".to_string());
+    let redis_url = std::env::var("REDIS_URL")
+        .unwrap_or_else(|_| "redis://127.0.0.1:6379".to_string());
+
+    // Initialize Redis (optional - will gracefully fallback if not available)
+    let redis_service = match RedisService::new(&redis_url) {
+        Ok(redis) => {
+            tracing::info!("✅ Redis connected successfully");
+            Some(Arc::new(redis))
+        }
+        Err(e) => {
+            tracing::warn!("⚠️ Redis not available: {}. Caching and rate limiting will be in-memory only.", e);
+            None
+        }
+    };
 
     // Initialize database connection
     let db_pool = sqlx::postgres::PgPoolOptions::new()
@@ -52,7 +71,15 @@ async fn main() {
         .expect("Failed to run migrations");
 
     // Initialize repositories (Infrastructure layer)
-    let invoice_repo = InvoiceRepository::new(db_pool.clone());
+    let tax_repo_impl = TaxRepositoryImpl::new(db_pool.clone());
+    let tax_repo: Arc<dyn TaxRepository + Send + Sync> = Arc::new(tax_repo_impl);
+
+    // Initialize tax service (needed for invoice repository)
+    let tax_service = Arc::new(TaxService::new(tax_repo.clone()));
+    tracing::info!("✅ Tax service initialized");
+
+    // Initialize invoice repository with tax service
+    let invoice_repo = InvoiceRepository::new(db_pool.clone(), tax_service.clone());
     let client_repo = ClientRepository::new(db_pool.clone());
     let user_repo = UserRepository::new(db_pool.clone());
     let report_repo = ReportRepositoryImpl::new(db_pool.clone());
@@ -60,6 +87,28 @@ async fn main() {
     let expense_repo = ExpenseRepository::new(db_pool.clone());
 
     // Initialize services (Domain layer)
+    let metrics_service = Arc::new(MetricsService::new().expect("Failed to initialize metrics service"));
+    tracing::info!("✅ Metrics service initialized");
+
+    // Initialize file service
+    let file_upload_dir = std::env::var("FILE_UPLOAD_DIR")
+        .unwrap_or_else(|_| "./uploads".to_string());
+    let max_file_size = std::env::var("MAX_FILE_SIZE")
+        .unwrap_or_else(|_| "10485760".to_string()) // 10MB default
+        .parse()
+        .unwrap_or(10485760);
+
+    let file_service = match FileService::new(&file_upload_dir, max_file_size) {
+        Ok(service) => {
+            tracing::info!("✅ File service initialized (upload dir: {})", file_upload_dir);
+            Arc::new(service)
+        }
+        Err(e) => {
+            tracing::error!("❌ Failed to initialize file service: {}", e);
+            panic!("File service initialization failed");
+        }
+    };
+
     let pdf_service = PdfService::new();
     let email_service = Arc::new(EmailService::new(EmailConfig {
         smtp_host: std::env::var("SMTP_HOST").unwrap_or_else(|_| "localhost".to_string()),
@@ -73,7 +122,13 @@ async fn main() {
         from_name: std::env::var("FROM_NAME").unwrap_or_else(|_| "FlashBill".to_string()),
     }));
 
+    let notification_service = Arc::new(NotificationService::new().expect("Failed to initialize notification service"));
+    tracing::info!("✅ Notification service initialized");
+
     // Initialize services with repositories and other services
+    // Clone invoice_repo before moving it into invoice_service
+    let invoice_repo_for_payment = invoice_repo.clone();
+    let invoice_repo_for_tax = invoice_repo.clone();
     let invoice_service = Arc::new(InvoiceService::new(
         invoice_repo,
         client_repo.clone(),
@@ -82,12 +137,15 @@ async fn main() {
         email_service.clone(),
     ));
     let auth_service = Arc::new(AuthService::new(user_repo.clone(), email_service.clone(), jwt_secret));
-    let report_service = Arc::new(ReportService::new(Arc::new(report_repo)));
+    let report_service = match &redis_service {
+        Some(redis) => Arc::new(ReportService::with_redis(Arc::new(report_repo), redis.clone())),
+        None => Arc::new(ReportService::new(Arc::new(report_repo))),
+    };
     let settings_service = Arc::new(SettingsService::new(user_repo.clone()));
     let client_service = Arc::new(ClientService::new(Arc::new(client_repo.clone())));
     let payment_service = Arc::new(PaymentService::new(
         Arc::new(payment_repo.clone()),
-        Arc::new(InvoiceRepository::new(db_pool.clone())),
+        Arc::new(invoice_repo_for_payment),
         Arc::new(client_repo.clone()),
         Arc::new(user_repo.clone()),
         email_service.clone(),
@@ -125,8 +183,6 @@ async fn main() {
     // Settings use cases
     let get_business_settings_uc = Arc::new(GetBusinessSettingsUseCase::new(settings_service.clone()));
     let update_business_settings_uc = Arc::new(UpdateBusinessSettingsUseCase::new(settings_service.clone()));
-    let get_tax_settings_uc = Arc::new(GetTaxSettingsUseCase::new(settings_service.clone()));
-    let update_tax_settings_uc = Arc::new(UpdateTaxSettingsUseCase::new(settings_service.clone()));
     let get_notification_settings_uc = Arc::new(GetNotificationSettingsUseCase::new(settings_service.clone()));
     let update_notification_settings_uc = Arc::new(UpdateNotificationSettingsUseCase::new(settings_service.clone()));
     let get_invoice_settings_uc = Arc::new(GetInvoiceSettingsUseCase::new(settings_service.clone()));
@@ -157,7 +213,30 @@ async fn main() {
     let delete_expense_uc = Arc::new(DeleteExpenseUseCase::new(expense_service.clone()));
     let get_expense_stats_uc = Arc::new(GetExpenseStatsUseCase::new(expense_service.clone()));
 
-    // Create main router
+    // Tax use cases
+    let create_tax_setting_uc = Arc::new(CreateTaxSettingUseCase::new(tax_service.clone()));
+    let get_org_tax_settings_uc = Arc::new(GetOrganizationTaxSettingsUseCase::new(tax_service.clone()));
+    let get_default_tax_uc = Arc::new(GetDefaultTaxUseCase::new(tax_service.clone()));
+    let update_tax_setting_uc = Arc::new(UpdateTaxSettingUseCase::new(tax_service.clone()));
+    let delete_tax_setting_uc = Arc::new(DeleteTaxSettingUseCase::new(tax_service.clone()));
+    let calculate_tax_uc = Arc::new(CalculateTaxUseCase::new(tax_service.clone()));
+    let get_tax_summary_uc = Arc::new(GetTaxSummaryUseCase::new(tax_service.clone()));
+    let validate_tax_id_uc = Arc::new(ValidateTaxIdUseCase::new(tax_service.clone()));
+
+    // Tax state for routes (needs invoice_repo for tax summary)
+    let tax_state = tax::TaxState {
+        create_tax_setting: create_tax_setting_uc,
+        get_tax_settings: get_org_tax_settings_uc,
+        get_default_tax: get_default_tax_uc,
+        update_tax_setting: update_tax_setting_uc,
+        delete_tax_setting: delete_tax_setting_uc,
+        calculate_tax: calculate_tax_uc,
+        get_tax_summary: get_tax_summary_uc,
+        validate_tax_id: validate_tax_id_uc,
+        invoice_repo: Arc::new(invoice_repo_for_tax),
+    };
+
+    // Create main router with security layers
     let app = Router::new()
         .route("/health", get(health_check))
         .route("/ready", get(ready_check))
@@ -194,8 +273,6 @@ async fn main() {
             .nest("/settings", settings::create_router(
                 get_business_settings_uc,
                 update_business_settings_uc,
-                get_tax_settings_uc,
-                update_tax_settings_uc,
                 get_notification_settings_uc,
                 update_notification_settings_uc,
                 get_invoice_settings_uc,
@@ -226,14 +303,58 @@ async fn main() {
                 delete_expense_uc,
                 get_expense_stats_uc,
             ))
+            .nest("/files", files::create_router(file_service.clone()))
+            .nest("/settings/tax", tax::create_settings_router(tax_state.clone()))
+            .nest("/tax", tax::create_operations_router(tax_state))
         )
+        // Metrics endpoint (public, no auth required)
+        .nest("/metrics", metrics::create_router(metrics_service.clone()))
         .layer(Extension(auth_service))  // Add auth service to extensions for AuthUser extractor
+        // Security: CORS configuration
         .layer(
             CorsLayer::new()
-                .allow_origin(Any)
+                .allow_origin(
+                    std::env::var("CORS_ORIGIN")
+                        .unwrap_or_else(|_| "http://localhost:3000".to_string())
+                        .parse::<HeaderValue>()
+                        .unwrap_or_else(|_| HeaderValue::from_static("http://localhost:3000"))
+                )
                 .allow_methods([Method::GET, Method::POST, Method::PUT, Method::DELETE, Method::OPTIONS])
-                .allow_headers(Any),
+                .allow_headers([
+                    axum::http::header::CONTENT_TYPE,
+                    axum::http::header::AUTHORIZATION,
+                    axum::http::header::ACCEPT,
+                    axum::http::header::ORIGIN,
+                ])
+                .allow_credentials(true)
+                .max_age(Duration::from_secs(3600)),
         )
+        // Security: Request body size limit (10MB max)
+        .layer(RequestBodyLimitLayer::new(10 * 1024 * 1024))
+        // Security: Request timeout (30 seconds)
+        .layer(RequestBodyTimeoutLayer::new(Duration::from_secs(30)))
+        // Security: Add security headers to responses
+        .layer(SetResponseHeaderLayer::overriding(
+            axum::http::header::X_CONTENT_TYPE_OPTIONS,
+            HeaderValue::from_static("nosniff"),
+        ))
+        .layer(SetResponseHeaderLayer::overriding(
+            axum::http::header::X_FRAME_OPTIONS,
+            HeaderValue::from_static("DENY"),
+        ))
+        .layer(SetResponseHeaderLayer::overriding(
+            axum::http::header::X_XSS_PROTECTION,
+            HeaderValue::from_static("1; mode=block"),
+        ))
+        .layer(SetResponseHeaderLayer::overriding(
+            axum::http::header::STRICT_TRANSPORT_SECURITY,
+            HeaderValue::from_static("max-age=31536000; includeSubDomains"),
+        ))
+        .layer(SetResponseHeaderLayer::overriding(
+            axum::http::header::REFERRER_POLICY,
+            HeaderValue::from_static("strict-origin-when-cross-origin"),
+        ))
+        // Logging/Tracing
         .layer(TraceLayer::new_for_http());
 
     // Start server

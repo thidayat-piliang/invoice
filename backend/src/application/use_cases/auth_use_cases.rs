@@ -15,7 +15,7 @@ impl RegisterUserUseCase {
         Self { auth_service }
     }
 
-    pub async fn execute(&self, command: RegisterUserCommand) -> Result<(), AuthError> {
+    pub async fn execute(&self, command: RegisterUserCommand) -> Result<AuthResultDto, AuthError> {
         let request = RegisterRequest {
             email: command.email,
             password: command.password,
@@ -24,7 +24,20 @@ impl RegisterUserUseCase {
             business_type: command.business_type,
         };
 
-        self.auth_service.register(request).await
+        let response = self.auth_service.register(request).await?;
+
+        Ok(AuthResultDto {
+            access_token: response.access_token,
+            refresh_token: response.refresh_token,
+            token_type: response.token_type,
+            expires_in: response.expires_in,
+            user: AuthenticatedUserDto {
+                id: response.user.id,
+                email: response.user.email,
+                subscription_tier: response.user.subscription_tier,
+                company_name: response.user.company_name,
+            },
+        })
     }
 }
 
@@ -47,12 +60,10 @@ impl LoginUserUseCase {
         let response = self.auth_service.login(request).await?;
 
         Ok(AuthResultDto {
-            token: AuthTokenDto {
-                access_token: response.access_token,
-                refresh_token: response.refresh_token,
-                token_type: response.token_type,
-                expires_in: response.expires_in,
-            },
+            access_token: response.access_token,
+            refresh_token: response.refresh_token,
+            token_type: response.token_type,
+            expires_in: response.expires_in,
             user: AuthenticatedUserDto {
                 id: response.user.id,
                 email: response.user.email,
@@ -77,12 +88,10 @@ impl RefreshTokenUseCase {
         let response = self.auth_service.refresh_token(command.refresh_token).await?;
 
         Ok(AuthResultDto {
-            token: AuthTokenDto {
-                access_token: response.access_token,
-                refresh_token: response.refresh_token,
-                token_type: response.token_type,
-                expires_in: response.expires_in,
-            },
+            access_token: response.access_token,
+            refresh_token: response.refresh_token,
+            token_type: response.token_type,
+            expires_in: response.expires_in,
             user: AuthenticatedUserDto {
                 id: response.user.id,
                 email: response.user.email,

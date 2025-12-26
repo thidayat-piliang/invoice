@@ -1,43 +1,44 @@
-use sqlx::{PgPool, Postgres, QueryBuilder};
+use sqlx::{PgPool, Postgres, QueryBuilder, Row};
 use uuid::Uuid;
 use chrono::{DateTime, Utc, NaiveDate, Datelike};
+use rand::Rng;
+use std::sync::Arc;
 
 use crate::domain::models::{
     Invoice, InvoiceItem, InvoiceStatus, InvoiceResponse, InvoiceDetailResponse,
     CreateInvoice, UpdateInvoice, InvoiceListFilter, CreatePayment, PaymentMethod
 };
+use crate::domain::services::TaxService;
 
 #[derive(Clone)]
 pub struct InvoiceRepository {
     db: PgPool,
+    tax_service: Arc<TaxService>,
 }
 
 impl InvoiceRepository {
-    pub fn new(db: PgPool) -> Self {
-        Self { db }
+    pub fn new(db: PgPool, tax_service: Arc<TaxService>) -> Self {
+        Self { db, tax_service }
     }
 
     pub async fn create(&self, user_id: Uuid, create: CreateInvoice) -> Result<Invoice, sqlx::Error> {
-        // Generate invoice number
-        let count = sqlx::query_scalar::<_, i64>(
-            "SELECT COUNT(*) FROM invoices WHERE user_id = $1 AND created_at >= date_trunc('year', CURRENT_DATE)"
-        )
-        .bind(user_id)
-        .fetch_one(&self.db)
-        .await?;
+        // Fetch default tax setting for the organization
+        let default_tax = self.tax_service.get_default_tax(user_id).await
+            .map_err(|_| sqlx::Error::RowNotFound)?;
 
-        let year = chrono::Local::now().year();
-        let invoice_number = format!("INV-{}-{:04}", year, count + 1);
-
-        // Calculate items
+        // Calculate items first (needed for both retry and final insert)
         let mut items = Vec::new();
         let mut subtotal = 0.0;
         let mut tax_amount = 0.0;
 
         for item in create.items {
-            let tax_rate = item.tax_rate.unwrap_or(0.0);
+            // Use item tax rate if provided, otherwise use default tax rate
+            let tax_rate = item.tax_rate.unwrap_or_else(|| {
+                default_tax.as_ref().map(|t| t.rate).unwrap_or(0.0)
+            });
+
             let item_subtotal = item.quantity * item.unit_price;
-            let item_tax = item_subtotal * (tax_rate / 100.0);
+            let item_tax = item_subtotal * tax_rate;
             let item_total = item_subtotal + item_tax;
 
             items.push(InvoiceItem {
@@ -76,19 +77,98 @@ impl InvoiceRepository {
             None
         };
 
-        // Insert invoice
+        // Get tax label and ID from default tax
+        let tax_label = default_tax.as_ref().map(|t| t.label.clone());
+        let tax_id = default_tax.as_ref().map(|t| t.id.to_string());
+
         let items_json = serde_json::to_value(&items).unwrap_or(serde_json::Value::Array(vec![]));
         let tax_calculation_json = serde_json::to_value(&tax_calculation).unwrap_or(serde_json::Value::Null);
 
-        let invoice = sqlx::query_as::<_, InvoiceRow>(
+        // Retry logic for duplicate invoice numbers
+        let max_retries = 5;
+        for attempt in 0..max_retries {
+            // Generate random values BEFORE async operations to avoid Send issues
+            let random_suffix: u32 = rand::random();
+
+            let count = sqlx::query_scalar::<_, i64>(
+                "SELECT COUNT(*) FROM invoices WHERE user_id = $1 AND created_at >= date_trunc('year', CURRENT_DATE)"
+            )
+            .bind(user_id)
+            .fetch_one(&self.db)
+            .await?;
+
+            let year = chrono::Local::now().year();
+            let invoice_number = format!("INV-{}-{:04}-{:03}", year, count + 1, random_suffix % 1000);
+
+            let result = sqlx::query_as::<_, InvoiceInsertRow>(
+                r#"
+                INSERT INTO invoices (
+                    id, user_id, client_id, invoice_number, status,
+                    issue_date, due_date, subtotal, tax_amount, discount_amount,
+                    total_amount, amount_paid, items, notes, terms,
+                    tax_calculation, tax_included, tax_label, tax_id,
+                    sent_at, created_at, updated_at
+                ) VALUES (
+                    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22
+                )
+                RETURNING *
+                "#,
+            )
+            .bind(Uuid::new_v4())
+            .bind(user_id)
+            .bind(create.client_id)
+            .bind(&invoice_number)
+            .bind(&status.to_string())
+            .bind(create.issue_date)
+            .bind(create.due_date)
+            .bind(subtotal)
+            .bind(tax_amount)
+            .bind(discount)
+            .bind(total_amount)
+            .bind(0.0) // amount_paid
+            .bind(&items_json)
+            .bind(&create.notes)
+            .bind(&create.terms)
+            .bind(&tax_calculation_json)
+            .bind(create.tax_included)
+            .bind(&tax_label)
+            .bind(&tax_id)
+            .bind(sent_at)
+            .bind(Utc::now())
+            .bind(Utc::now())
+            .fetch_one(&self.db)
+            .await;
+
+            match result {
+                Ok(invoice) => return Ok(invoice.to_invoice()),
+                Err(sqlx::Error::Database(db_err)) => {
+                    if db_err.is_unique_violation() && attempt < max_retries - 1 {
+                        // Wait a tiny bit and retry
+                        tokio::time::sleep(tokio::time::Duration::from_millis(10 * (attempt as u64 + 1))).await;
+                        continue;
+                    } else {
+                        return Err(sqlx::Error::Database(db_err));
+                    }
+                }
+                Err(e) => return Err(e),
+            }
+        }
+
+        // Fallback: use timestamp-based invoice number with microseconds and random
+        let timestamp = chrono::Local::now().format("%Y%m%d%H%M%S%.6f");
+        let random_suffix: u32 = rand::random();
+        let invoice_number = format!("INV-{}-{:05}", timestamp, random_suffix % 100000);
+
+        let invoice = sqlx::query_as::<_, InvoiceInsertRow>(
             r#"
             INSERT INTO invoices (
                 id, user_id, client_id, invoice_number, status,
                 issue_date, due_date, subtotal, tax_amount, discount_amount,
                 total_amount, amount_paid, items, notes, terms,
-                tax_calculation, tax_included, sent_at, created_at, updated_at
+                tax_calculation, tax_included, tax_label, tax_id,
+                sent_at, created_at, updated_at
             ) VALUES (
-                $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20
+                $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22
             )
             RETURNING *
             "#,
@@ -105,11 +185,13 @@ impl InvoiceRepository {
         .bind(discount)
         .bind(total_amount)
         .bind(0.0) // amount_paid
-        .bind(items_json)
+        .bind(&items_json)
         .bind(&create.notes)
         .bind(&create.terms)
-        .bind(tax_calculation_json)
+        .bind(&tax_calculation_json)
         .bind(create.tax_included)
+        .bind(&tax_label)
+        .bind(&tax_id)
         .bind(sent_at)
         .bind(Utc::now())
         .bind(Utc::now())
@@ -120,10 +202,16 @@ impl InvoiceRepository {
     }
 
     pub async fn get_by_id(&self, user_id: Uuid, invoice_id: Uuid) -> Result<InvoiceDetailResponse, sqlx::Error> {
-        let invoice = sqlx::query_as::<_, InvoiceRow>(
+        let row = sqlx::query(
             r#"
             SELECT
-                i.*,
+                i.id, i.user_id, i.client_id, i.invoice_number, i.status,
+                i.issue_date, i.due_date, i.subtotal, i.tax_amount, i.discount_amount,
+                i.total_amount, i.amount_paid, i.items, i.notes, i.terms,
+                i.tax_calculation, i.tax_included, i.tax_label, i.tax_id,
+                i.pdf_url, i.receipt_image_url,
+                i.sent_at, i.paid_at, i.reminder_sent_count, i.last_reminder_sent,
+                i.created_at, i.updated_at, i.payment_method, i.payment_reference,
                 c.name as client_name,
                 c.email as client_email,
                 c.phone as client_phone,
@@ -138,8 +226,56 @@ impl InvoiceRepository {
         .fetch_optional(&self.db)
         .await?;
 
-        match invoice {
-            Some(row) => Ok(row.to_invoice_detail()),
+        match row {
+            Some(r) => {
+                let items: Vec<InvoiceItem> = serde_json::from_value(r.try_get("items")?).unwrap_or_default();
+                let status_str: String = r.try_get("status")?;
+                let status = match status_str.as_str() {
+                    "draft" => InvoiceStatus::Draft,
+                    "sent" => InvoiceStatus::Sent,
+                    "viewed" => InvoiceStatus::Viewed,
+                    "partial" => InvoiceStatus::Partial,
+                    "paid" => InvoiceStatus::Paid,
+                    "overdue" => InvoiceStatus::Overdue,
+                    "cancelled" => InvoiceStatus::Cancelled,
+                    _ => InvoiceStatus::Draft,
+                };
+                let balance_due: f64 = r.try_get::<f64, _>("total_amount")? - r.try_get::<f64, _>("amount_paid")?;
+
+                Ok(InvoiceDetailResponse {
+                    id: r.try_get("id")?,
+                    invoice_number: r.try_get("invoice_number")?,
+                    status,
+                    client_id: r.try_get("client_id")?,
+                    client_name: r.try_get("client_name")?,
+                    client_email: r.try_get("client_email")?,
+                    client_phone: r.try_get("client_phone")?,
+                    client_address: r.try_get("client_address")?,
+                    issue_date: r.try_get("issue_date")?,
+                    due_date: r.try_get("due_date")?,
+                    subtotal: r.try_get("subtotal")?,
+                    tax_amount: r.try_get("tax_amount")?,
+                    discount_amount: r.try_get("discount_amount")?,
+                    total_amount: r.try_get("total_amount")?,
+                    amount_paid: r.try_get("amount_paid")?,
+                    balance_due,
+                    items,
+                    notes: r.try_get("notes")?,
+                    terms: r.try_get("terms")?,
+                    tax_calculation: r.try_get("tax_calculation")?,
+                    tax_included: r.try_get("tax_included")?,
+                    tax_label: r.try_get("tax_label")?,
+                    tax_id: r.try_get("tax_id")?,
+                    pdf_url: r.try_get("pdf_url")?,
+                    receipt_image_url: r.try_get("receipt_image_url")?,
+                    sent_at: r.try_get("sent_at")?,
+                    paid_at: r.try_get("paid_at")?,
+                    reminder_sent_count: r.try_get("reminder_sent_count")?,
+                    last_reminder_sent: r.try_get("last_reminder_sent")?,
+                    created_at: r.try_get("created_at")?,
+                    updated_at: r.try_get("updated_at")?,
+                })
+            }
             None => Err(sqlx::Error::RowNotFound),
         }
     }
@@ -156,11 +292,7 @@ impl InvoiceRepository {
                 i.issue_date, i.due_date, i.total_amount,
                 (i.total_amount - i.amount_paid) as balance_due,
                 i.created_at,
-                CASE
-                    WHEN i.due_date < CURRENT_DATE AND i.status != 'paid' AND i.status != 'cancelled'
-                    THEN EXTRACT(DAY FROM (CURRENT_DATE - i.due_date))::INTEGER
-                    ELSE 0
-                END as days_until_due,
+                (i.due_date - CURRENT_DATE)::int4 as days_until_due,
                 (i.due_date < CURRENT_DATE AND i.status != 'paid' AND i.status != 'cancelled') as is_overdue
             FROM invoices i
             JOIN clients c ON i.client_id = c.id
@@ -209,10 +341,25 @@ impl InvoiceRepository {
             query_builder.push_bind(offset);
         }
 
-        let invoices = query_builder
-            .build_query_as()
-            .fetch_all(&self.db)
-            .await?;
+        let query = query_builder.build();
+        let rows = query.fetch_all(&self.db).await?;
+
+        let invoices: Vec<InvoiceResponse> = rows.into_iter().map(|row| {
+            Ok(InvoiceResponse {
+                id: row.try_get("id")?,
+                invoice_number: row.try_get("invoice_number")?,
+                status: row.try_get("status")?,
+                client_name: row.try_get("client_name")?,
+                client_email: row.try_get("client_email")?,
+                issue_date: row.try_get("issue_date")?,
+                due_date: row.try_get("due_date")?,
+                total_amount: row.try_get("total_amount")?,
+                balance_due: row.try_get("balance_due")?,
+                days_until_due: row.try_get("days_until_due")?,
+                is_overdue: row.try_get("is_overdue")?,
+                created_at: row.try_get("created_at")?,
+            })
+        }).collect::<Result<Vec<_>, sqlx::Error>>()?;
 
         Ok(invoices)
     }
@@ -239,7 +386,7 @@ impl InvoiceRepository {
             for item in new_items {
                 let tax_rate = item.tax_rate.unwrap_or(0.0);
                 let item_subtotal = item.quantity * item.unit_price;
-                let item_tax = item_subtotal * (tax_rate / 100.0);
+                let item_tax = item_subtotal * tax_rate;
                 let item_total = item_subtotal + item_tax;
 
                 items.push(InvoiceItem {
@@ -269,7 +416,7 @@ impl InvoiceRepository {
         let tax_included = update.tax_included.unwrap_or(existing.tax_included);
         let items_json = serde_json::to_value(&items).unwrap_or(serde_json::Value::Array(vec![]));
 
-        let invoice = sqlx::query_as::<_, InvoiceRow>(
+        let invoice = sqlx::query_as::<_, InvoiceInsertRow>(
             r#"
             UPDATE invoices SET
                 client_id = $1, issue_date = $2, due_date = $3, items = $4,
@@ -282,7 +429,7 @@ impl InvoiceRepository {
         .bind(client_id)
         .bind(issue_date)
         .bind(due_date)
-        .bind(items_json)
+        .bind(&items_json)
         .bind(&notes)
         .bind(&terms)
         .bind(discount)
@@ -338,7 +485,7 @@ impl InvoiceRepository {
         invoice.updated_at = Utc::now();
 
         // Update in database
-        let updated = sqlx::query_as::<_, InvoiceRow>(
+        let updated = sqlx::query_as::<_, InvoiceInsertRow>(
             r#"
             UPDATE invoices SET
                 amount_paid = $1, status = $2, paid_at = $3, updated_at = $4
@@ -422,7 +569,7 @@ impl InvoiceRepository {
 
     // Internal helper
     async fn get_invoice_internal(&self, user_id: Uuid, invoice_id: Uuid) -> Result<Invoice, sqlx::Error> {
-        let row = sqlx::query_as::<_, InvoiceRow>(
+        let row = sqlx::query_as::<_, InvoiceInsertRow>(
             "SELECT * FROM invoices WHERE id = $1 AND user_id = $2"
         )
         .bind(invoice_id)
@@ -463,7 +610,7 @@ impl InvoiceRepository {
     }
 }
 
-// Helper struct for database query
+// Helper struct for database query (includes client info)
 #[derive(sqlx::FromRow)]
 struct InvoiceRow {
     id: Uuid,
@@ -483,6 +630,8 @@ struct InvoiceRow {
     terms: Option<String>,
     tax_calculation: serde_json::Value,
     tax_included: bool,
+    tax_label: Option<String>,
+    tax_id: Option<String>,
     pdf_url: Option<String>,
     receipt_image_url: Option<String>,
     sent_at: Option<DateTime<Utc>>,
@@ -491,14 +640,51 @@ struct InvoiceRow {
     last_reminder_sent: Option<DateTime<Utc>>,
     created_at: DateTime<Utc>,
     updated_at: DateTime<Utc>,
+    // Additional columns in invoices table
+    payment_method: Option<String>,
+    payment_reference: Option<String>,
     // For detail query
     client_name: Option<String>,
     client_email: Option<String>,
     client_phone: Option<String>,
     client_address: Option<serde_json::Value>,
     // For list query
-    days_until_due: Option<i64>,
+    days_until_due: Option<i32>,
     is_overdue: Option<bool>,
+}
+
+// Helper struct for INSERT RETURNING (only invoice columns)
+#[derive(sqlx::FromRow)]
+struct InvoiceInsertRow {
+    id: Uuid,
+    user_id: Uuid,
+    client_id: Uuid,
+    invoice_number: String,
+    status: String,
+    issue_date: NaiveDate,
+    due_date: NaiveDate,
+    subtotal: f64,
+    tax_amount: f64,
+    discount_amount: f64,
+    total_amount: f64,
+    amount_paid: f64,
+    items: serde_json::Value,
+    notes: Option<String>,
+    terms: Option<String>,
+    tax_calculation: serde_json::Value,
+    tax_included: bool,
+    tax_label: Option<String>,
+    tax_id: Option<String>,
+    pdf_url: Option<String>,
+    receipt_image_url: Option<String>,
+    sent_at: Option<DateTime<Utc>>,
+    paid_at: Option<DateTime<Utc>>,
+    reminder_sent_count: i32,
+    last_reminder_sent: Option<DateTime<Utc>>,
+    created_at: DateTime<Utc>,
+    updated_at: DateTime<Utc>,
+    payment_method: Option<String>,
+    payment_reference: Option<String>,
 }
 
 impl InvoiceRow {
@@ -534,6 +720,8 @@ impl InvoiceRow {
             terms: self.terms,
             tax_calculation: self.tax_calculation,
             tax_included: self.tax_included,
+            tax_label: self.tax_label,
+            tax_id: self.tax_id,
             pdf_url: self.pdf_url,
             receipt_image_url: self.receipt_image_url,
             sent_at: self.sent_at,
@@ -583,11 +771,61 @@ impl InvoiceRow {
             terms: self.terms,
             tax_calculation: self.tax_calculation,
             tax_included: self.tax_included,
+            tax_label: self.tax_label,
+            tax_id: self.tax_id,
             pdf_url: self.pdf_url,
             receipt_image_url: self.receipt_image_url,
             sent_at: self.sent_at,
             paid_at: self.paid_at,
             reminder_sent_count: self.reminder_sent_count,
+            last_reminder_sent: self.last_reminder_sent,
+            created_at: self.created_at,
+            updated_at: self.updated_at,
+        }
+    }
+}
+
+impl InvoiceInsertRow {
+    fn to_invoice(self) -> Invoice {
+        let items: Vec<InvoiceItem> = serde_json::from_value(self.items).unwrap_or_default();
+
+        let status = match self.status.as_str() {
+            "draft" => InvoiceStatus::Draft,
+            "sent" => InvoiceStatus::Sent,
+            "viewed" => InvoiceStatus::Viewed,
+            "partial" => InvoiceStatus::Partial,
+            "paid" => InvoiceStatus::Paid,
+            "overdue" => InvoiceStatus::Overdue,
+            "cancelled" => InvoiceStatus::Cancelled,
+            _ => InvoiceStatus::Draft,
+        };
+
+        Invoice {
+            id: self.id,
+            user_id: self.user_id,
+            client_id: self.client_id,
+            invoice_number: self.invoice_number,
+            status,
+            issue_date: self.issue_date,
+            due_date: self.due_date,
+            subtotal: self.subtotal,
+            tax_amount: self.tax_amount,
+            discount_amount: self.discount_amount,
+            total_amount: self.total_amount,
+            amount_paid: self.amount_paid,
+            items,
+            notes: self.notes,
+            terms: self.terms,
+            tax_calculation: self.tax_calculation,
+            tax_included: self.tax_included,
+            tax_label: self.tax_label,
+            tax_id: self.tax_id,
+            pdf_url: self.pdf_url,
+            receipt_image_url: self.receipt_image_url,
+            sent_at: self.sent_at,
+            paid_at: self.paid_at,
+            reminder_sent_count: self.reminder_sent_count,
+            last_reminder_sent: self.last_reminder_sent,
             created_at: self.created_at,
             updated_at: self.updated_at,
         }

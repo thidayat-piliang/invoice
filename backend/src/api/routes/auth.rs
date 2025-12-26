@@ -61,9 +61,9 @@ pub fn create_router(
 async fn register(
     State(state): State<AuthState>,
     Json(payload): Json<RegisterUserCommand>,
-) -> Result<StatusCode, ApiError> {
-    state.register_uc.execute(payload).await?;
-    Ok(StatusCode::CREATED)
+) -> Result<(StatusCode, Json<AuthResultDto>), ApiError> {
+    let response = state.register_uc.execute(payload).await?;
+    Ok((StatusCode::CREATED, Json(response)))
 }
 
 async fn login(

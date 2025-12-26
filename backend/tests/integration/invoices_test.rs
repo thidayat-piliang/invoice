@@ -5,7 +5,7 @@ async fn setup_authenticated_client() -> ApiTestClient {
     let base_url = get_api_base_url();
     let client = ApiTestClient::new(base_url);
 
-    let unique_id = chrono::Utc::now().timestamp();
+    let unique_id = crate::integration::utils::get_unique_id();
     let email = format!("invoice_test_{}@example.com", unique_id);
     let password = "testpassword123";
 
@@ -56,7 +56,12 @@ async fn test_invoice_crud() {
 
     // 5. Send invoice
     let resp = client.send_invoice(&invoice_id).await.unwrap();
-    assert_eq!(resp.status(), 200);
+    let status = resp.status();
+    let body = resp.text().await.unwrap();
+    if status != 200 {
+        println!("Send invoice failed with status {}: {}", status, body);
+    }
+    assert_eq!(status, 200);
 
     // 6. Get PDF
     let resp = client.get_invoice_pdf(&invoice_id).await.unwrap();
@@ -66,11 +71,7 @@ async fn test_invoice_crud() {
     let resp = client.record_payment(&invoice_id, 250.0).await.unwrap();
     assert_eq!(resp.status(), 201);
 
-    // 8. Send reminder
-    let resp = client.send_reminder(&invoice_id).await.unwrap();
-    assert_eq!(resp.status(), 200);
-
-    // 9. Delete invoice
+    // 8. Delete invoice
     let resp = client.delete_invoice(&invoice_id).await.unwrap();
     assert_eq!(resp.status(), 204);
 
@@ -88,11 +89,16 @@ async fn test_invoice_with_multiple_items() {
     let client_id = client_data["id"].as_str().unwrap().to_string();
 
     // Create invoice with custom items
+    let today = chrono::Utc::now().naive_utc().date();
+    let due_date = today + chrono::Duration::days(30);
+
     let mut request = client.clone();
     let resp = request.get_http_client().post(&format!("{}/api/v1/invoices", get_api_base_url()))
         .header("Authorization", format!("Bearer {}", request.get_auth_token().unwrap()))
         .json(&serde_json::json!({
             "client_id": client_id,
+            "issue_date": today,
+            "due_date": due_date,
             "items": [
                 {
                     "description": "Service A",
@@ -108,7 +114,9 @@ async fn test_invoice_with_multiple_items() {
                 }
             ],
             "notes": "Multi-item invoice",
-            "terms": "Net 30"
+            "terms": "Net 30",
+            "tax_included": false,
+            "send_immediately": false
         }))
         .send()
         .await.unwrap();
@@ -153,6 +161,58 @@ async fn test_invoice_status_transitions() {
     let resp = client.get_invoice(&invoice_id).await.unwrap();
     let paid_invoice: Value = resp.json().await.unwrap();
     assert_eq!(paid_invoice["status"], "paid");
+
+    // Cleanup
+    client.delete_invoice(&invoice_id).await.unwrap();
+    client.delete_client(&client_id).await.unwrap();
+}
+
+#[tokio::test]
+async fn test_invoice_reminder() {
+    let client = setup_authenticated_client().await;
+
+    // Create client
+    let resp = client.create_client("Reminder Test", "reminder@test.com").await.unwrap();
+    let client_data: Value = resp.json().await.unwrap();
+    let client_id = client_data["id"].as_str().unwrap().to_string();
+
+    // Create invoice with past due date
+    let today = chrono::Utc::now().naive_utc().date();
+    let past_due_date = today - chrono::Duration::days(5); // 5 days overdue
+
+    let mut request = client.clone();
+    let resp = request.get_http_client().post(&format!("{}/api/v1/invoices", get_api_base_url()))
+        .header("Authorization", format!("Bearer {}", request.get_auth_token().unwrap()))
+        .json(&serde_json::json!({
+            "client_id": client_id,
+            "issue_date": today - chrono::Duration::days(30),
+            "due_date": past_due_date,
+            "items": [
+                {
+                    "description": "Overdue Service",
+                    "quantity": 1,
+                    "unit_price": 100.0,
+                    "tax_rate": 0.0
+                }
+            ],
+            "notes": "Overdue invoice for reminder test",
+            "terms": "Net 30",
+            "tax_included": false,
+            "send_immediately": false
+        }))
+        .send()
+        .await.unwrap();
+
+    assert_eq!(resp.status(), 201);
+    let invoice: Value = resp.json().await.unwrap();
+    let invoice_id = invoice["id"].as_str().unwrap().to_string();
+
+    // Send invoice
+    client.send_invoice(&invoice_id).await.unwrap();
+
+    // Send reminder (should work since invoice is overdue)
+    let resp = client.send_reminder(&invoice_id).await.unwrap();
+    assert_eq!(resp.status(), 200);
 
     // Cleanup
     client.delete_invoice(&invoice_id).await.unwrap();

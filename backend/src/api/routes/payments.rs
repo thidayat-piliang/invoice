@@ -47,8 +47,9 @@ pub fn create_router(
     Router::new()
         .route("/", get(list_payments))
         .route("/", post(create_payment))
-        .route("/:id", get(get_payment))
-        .route("/:id/refund", post(refund_payment))
+        .route("/{id}", get(get_payment))
+        .route("/{id}/refund", post(refund_payment))
+        .route("/stats", get(get_payment_stats))
         .route("/methods", get(get_payment_methods))
         .with_state(state)
 }
@@ -104,4 +105,12 @@ async fn get_payment_methods(
 ) -> Result<Json<Vec<String>>, ApiError> {
     let methods = state.get_payment_methods_uc.execute();
     Ok(Json(methods))
+}
+
+async fn get_payment_stats(
+    auth_user: AuthUser,
+    State(state): State<PaymentState>,
+) -> Result<Json<crate::domain::models::PaymentStats>, ApiError> {
+    let stats = state.get_payment_stats_uc.execute(auth_user.user_id).await?;
+    Ok(Json(stats))
 }

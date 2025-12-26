@@ -188,7 +188,7 @@ impl AuthService {
 
     // High-level business logic methods (moved from routes)
 
-    pub async fn register(&self, payload: RegisterRequest) -> Result<(), AuthError> {
+    pub async fn register(&self, payload: RegisterRequest) -> Result<AuthResponse, AuthError> {
         // Validate
         payload.validate().map_err(|e| AuthError::Validation(e.to_string()))?;
 
@@ -209,7 +209,7 @@ impl AuthService {
         let company_name = payload.company_name.clone();
 
         // Create user
-        let _user = self.user_repo.create(
+        let user = self.user_repo.create(
             email.clone(),
             password_hash,
             payload.phone,
@@ -218,14 +218,38 @@ impl AuthService {
             verification_token.clone(),
         ).await?;
 
-        // Send verification email
-        self.email_service.send_verification_email(
+        // Send verification email (non-blocking, ignore errors)
+        let _ = self.email_service.send_verification_email(
             &email,
             &company_name.unwrap_or_else(|| "Customer".to_string()),
             &verification_token,
-        ).map_err(|e| AuthError::DatabaseError(format!("Email send failed: {}", e)))?;
+        );
 
-        Ok(())
+        // Generate tokens for immediate login
+        let tier_str = match user.subscription_tier {
+            crate::domain::models::SubscriptionTier::Free => "free",
+            crate::domain::models::SubscriptionTier::Pro => "pro",
+            crate::domain::models::SubscriptionTier::Business => "business",
+        };
+        let access_token = self.generate_access_token(
+            user.id,
+            &user.email,
+            tier_str
+        )?;
+        let refresh_token = self.generate_refresh_token(user.id)?;
+
+        Ok(AuthResponse {
+            access_token,
+            refresh_token,
+            token_type: "Bearer".to_string(),
+            expires_in: self.access_token_expiry * 60,
+            user: crate::domain::models::AuthUser {
+                id: user.id,
+                email: user.email,
+                subscription_tier: user.subscription_tier,
+                company_name: user.company_name,
+            },
+        })
     }
 
     pub async fn login(&self, payload: LoginRequest) -> Result<AuthResponse, AuthError> {

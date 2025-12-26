@@ -1,5 +1,6 @@
 use std::env;
 use sqlx::{PgPool, postgres::PgPoolOptions};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Get database URL from environment or use default for testing
 pub fn get_test_db_url() -> String {
@@ -11,6 +12,14 @@ pub fn get_test_db_url() -> String {
 pub fn get_api_base_url() -> String {
     env::var("API_URL")
         .unwrap_or_else(|_| "http://localhost:3000".to_string())
+}
+
+/// Generate a unique ID for test data to avoid collisions
+pub fn get_unique_id() -> String {
+    let start = SystemTime::now();
+    let since_epoch = start.duration_since(UNIX_EPOCH).expect("Time went backwards");
+    // Use nanoseconds for uniqueness
+    format!("{}_{}", since_epoch.as_secs(), since_epoch.subsec_nanos())
 }
 
 /// Create a test database pool

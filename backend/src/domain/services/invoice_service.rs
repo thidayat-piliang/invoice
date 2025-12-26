@@ -214,6 +214,7 @@ impl InvoiceService {
             detail.total_amount,
             detail.notes.as_deref(),
             detail.terms.as_deref(),
+            detail.tax_label.as_deref(),
         )?;
 
         // Send email with PDF attachment
@@ -282,6 +283,7 @@ impl InvoiceService {
             detail.total_amount,
             detail.notes.as_deref(),
             detail.terms.as_deref(),
+            detail.tax_label.as_deref(),
         )?;
 
         Ok(pdf_bytes)

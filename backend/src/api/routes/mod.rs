@@ -5,3 +5,6 @@ pub mod payments;
 pub mod expenses;
 pub mod reports;
 pub mod settings;
+pub mod metrics;
+pub mod files;
+pub mod tax;

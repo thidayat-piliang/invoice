@@ -7,9 +7,13 @@ use validator::Validate;
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
 #[sqlx(type_name = "varchar")]
 pub enum PaymentStatus {
+    #[serde(rename = "pending")]
     Pending,
+    #[serde(rename = "completed")]
     Completed,
+    #[serde(rename = "failed")]
     Failed,
+    #[serde(rename = "refunded")]
     Refunded,
 }
 
@@ -27,10 +31,15 @@ impl std::fmt::Display for PaymentStatus {
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
 #[sqlx(type_name = "varchar")]
 pub enum PaymentMethod {
+    #[serde(rename = "stripe")]
     Stripe,
+    #[serde(rename = "paypal")]
     PayPal,
+    #[serde(rename = "check")]
     Check,
+    #[serde(rename = "cash")]
     Cash,
+    #[serde(rename = "bank_transfer")]
     BankTransfer,
 }
 

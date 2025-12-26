@@ -11,7 +11,7 @@ async fn test_full_auth_flow() {
     assert_eq!(health, "OK");
 
     // Generate unique email for this test
-    let unique_id = chrono::Utc::now().timestamp();
+    let unique_id = crate::integration::utils::get_unique_id();
     let email = format!("test_user_{}@example.com", unique_id);
     let password = "testpassword123";
 

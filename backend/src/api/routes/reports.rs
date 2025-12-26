@@ -1,5 +1,7 @@
 use axum::{
     extract::{Query, State},
+    http::HeaderMap,
+    response::{IntoResponse, Response},
     routing::{get, post},
     Json, Router,
 };
@@ -125,33 +127,50 @@ struct ExportRequest {
     date_range: DateRange,
 }
 
-#[derive(Serialize)]
-struct ExportResponse {
-    download_url: String,
-    expires_at: String,
-}
-
 async fn export_report(
     auth_user: AuthUser,
     State(state): State<ReportState>,
     Json(payload): Json<ExportRequest>,
-) -> Result<Json<ExportResponse>, ApiError> {
+) -> Result<impl IntoResponse, ApiError> {
     let start_date = NaiveDate::parse_from_str(&payload.date_range.start_date, "%Y-%m-%d")
         .map_err(|e| ApiError::BadRequest(format!("Invalid start_date: {}", e)))?;
     let end_date = NaiveDate::parse_from_str(&payload.date_range.end_date, "%Y-%m-%d")
         .map_err(|e| ApiError::BadRequest(format!("Invalid end_date: {}", e)))?;
 
-    let download_url = state.export_report_uc.execute(
+    let file_data = state.export_report_uc.execute(
         auth_user.user_id,
-        payload.report_type,
-        payload.format,
+        payload.report_type.clone(),
+        payload.format.clone(),
         start_date,
         end_date,
     ).await?;
 
-    let expires_at = chrono::Utc::now() + chrono::Duration::hours(1);
-    Ok(Json(ExportResponse {
-        download_url,
-        expires_at: expires_at.to_rfc3339(),
-    }))
+    // Generate filename
+    let filename = format!("{}_{}_{}_{}.{}",
+        payload.report_type,
+        start_date,
+        end_date,
+        chrono::Utc::now().timestamp(),
+        payload.format
+    );
+
+    // Determine content type
+    let content_type = if payload.format == "pdf" {
+        "application/pdf"
+    } else {
+        "text/csv"
+    };
+
+    // Create response with file download headers
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        axum::http::header::CONTENT_TYPE,
+        content_type.parse().unwrap(),
+    );
+    headers.insert(
+        axum::http::header::CONTENT_DISPOSITION,
+        format!("attachment; filename=\"{}\"", filename).parse().unwrap(),
+    );
+
+    Ok((headers, file_data))
 }

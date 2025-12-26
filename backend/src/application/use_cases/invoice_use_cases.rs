@@ -37,6 +37,8 @@ impl CreateInvoiceUseCase {
             discount_amount: command.discount_amount,
             tax_included: command.tax_included,
             send_immediately: command.send_immediately,
+            tax_label: None,  // Will be set by service based on default tax
+            tax_id: None,    // Will be set by service based on default tax
         };
 
         // Execute business logic via service
@@ -48,7 +50,10 @@ impl CreateInvoiceUseCase {
             id: invoice.id,
             invoice_number: invoice.invoice_number.clone(),
             status: invoice.status,
+            subtotal: invoice.subtotal,
+            tax_amount: invoice.tax_amount,
             total_amount: invoice.total_amount,
+            tax_label: invoice.tax_label,
             message: if status_str == "sent" {
                 "Invoice created and sent successfully".to_string()
             } else {
@@ -93,11 +98,14 @@ impl GetInvoiceUseCase {
             terms: invoice.terms,
             tax_calculation: invoice.tax_calculation,
             tax_included: invoice.tax_included,
+            tax_label: invoice.tax_label,
+            tax_id: invoice.tax_id,
             pdf_url: invoice.pdf_url,
             receipt_image_url: invoice.receipt_image_url,
             sent_at: invoice.sent_at,
             paid_at: invoice.paid_at,
             reminder_sent_count: invoice.reminder_sent_count,
+            last_reminder_sent: invoice.last_reminder_sent,
             created_at: invoice.created_at,
             updated_at: invoice.updated_at,
         })
@@ -204,11 +212,14 @@ impl UpdateInvoiceUseCase {
             terms: invoice.terms,
             tax_calculation: invoice.tax_calculation,
             tax_included: invoice.tax_included,
+            tax_label: invoice.tax_label,
+            tax_id: invoice.tax_id,
             pdf_url: invoice.pdf_url,
             receipt_image_url: invoice.receipt_image_url,
             sent_at: invoice.sent_at,
             paid_at: invoice.paid_at,
             reminder_sent_count: invoice.reminder_sent_count,
+            last_reminder_sent: invoice.last_reminder_sent,
             created_at: invoice.created_at,
             updated_at: invoice.updated_at,
         })

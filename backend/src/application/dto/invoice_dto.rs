@@ -87,11 +87,14 @@ pub struct InvoiceDto {
     pub terms: Option<String>,
     pub tax_calculation: serde_json::Value,
     pub tax_included: bool,
+    pub tax_label: Option<String>,
+    pub tax_id: Option<String>,
     pub pdf_url: Option<String>,
     pub receipt_image_url: Option<String>,
     pub sent_at: Option<DateTime<Utc>>,
     pub paid_at: Option<DateTime<Utc>>,
     pub reminder_sent_count: i32,
+    pub last_reminder_sent: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -107,7 +110,7 @@ pub struct InvoiceSummaryDto {
     pub due_date: NaiveDate,
     pub total_amount: f64,
     pub balance_due: f64,
-    pub days_until_due: i64,
+    pub days_until_due: i32,
     pub is_overdue: bool,
     pub created_at: DateTime<Utc>,
 }
@@ -117,7 +120,10 @@ pub struct InvoiceCreatedDto {
     pub id: Uuid,
     pub invoice_number: String,
     pub status: InvoiceStatus,
+    pub subtotal: f64,
+    pub tax_amount: f64,
     pub total_amount: f64,
+    pub tax_label: Option<String>,
     pub message: String,
 }
 

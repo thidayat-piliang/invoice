@@ -9,6 +9,10 @@ pub mod settings_service;
 pub mod client_service;
 pub mod payment_service;
 pub mod expense_service;
+pub mod redis_service;
+pub mod metrics_service;
+pub mod file_service;
+pub mod payment_gateway_service;
 
 pub use invoice_service::*;
 pub use tax_service::*;
@@ -21,3 +25,7 @@ pub use settings_service::*;
 pub use client_service::*;
 pub use payment_service::*;
 pub use expense_service::*;
+pub use redis_service::*;
+pub use metrics_service::*;
+pub use file_service::*;
+pub use payment_gateway_service::*;
