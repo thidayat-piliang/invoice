@@ -1,5 +1,7 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../features/auth/presentation/providers/auth_provider.dart';
 import '../../features/auth/presentation/screens/login_screen.dart';
 import '../../features/auth/presentation/screens/register_screen.dart';
 import '../../features/auth/presentation/screens/forgot_password_screen.dart';
@@ -8,39 +10,61 @@ import '../../features/invoices/presentation/screens/invoice_list_screen.dart';
 import '../../features/invoices/presentation/screens/create_invoice_screen.dart';
 import '../../features/invoices/presentation/screens/invoice_detail_screen.dart';
 import '../../features/clients/presentation/screens/client_list_screen.dart';
+import '../../features/clients/presentation/screens/client_form_screen.dart';
+import '../../features/clients/presentation/screens/client_detail_screen.dart';
+import '../../features/payments/presentation/screens/payment_list_screen.dart';
+import '../../features/payments/presentation/screens/create_payment_screen.dart';
+import '../../features/expenses/presentation/screens/expense_list_screen.dart';
+import '../../features/expenses/presentation/screens/expense_form_screen.dart';
+import '../../features/reports/presentation/screens/reports_screen.dart';
+import '../../features/reports/presentation/screens/income_report_screen.dart';
+import '../../features/reports/presentation/screens/report_detail_screen.dart';
 import '../../features/settings/presentation/screens/settings_screen.dart';
+import '../../features/settings/presentation/screens/business_settings_screen.dart';
+import '../../features/settings/presentation/screens/tax_settings_screen.dart';
+import '../../features/settings/presentation/screens/notification_settings_screen.dart';
+import '../../features/settings/presentation/screens/invoice_settings_screen.dart';
 
-final appRouterProvider = Provider<GoRouter>((ref) {
-  return GoRouter(
-    initialLocation: '/auth/login',
-    redirect: (context, state) {
-      // TODO: Implement auth state check
-      final isAuthenticated = false; // Placeholder
-
-      if (isAuthenticated && state.location.startsWith('/auth')) {
-        return '/dashboard';
-      } else if (!isAuthenticated && !state.location.startsWith('/auth')) {
-        return '/auth/login';
-      }
-      return null;
-    },
+// Shell routes for bottom navigation
+final _shellRoutes = [
+  StatefulShellBranch(
     routes: [
-      GoRoute(
-        path: '/auth/login',
-        builder: (context, state) => const LoginScreen(),
-      ),
-      GoRoute(
-        path: '/auth/register',
-        builder: (context, state) => const RegisterScreen(),
-      ),
-      GoRoute(
-        path: '/auth/forgot-password',
-        builder: (context, state) => const ForgotPasswordScreen(),
-      ),
       GoRoute(
         path: '/dashboard',
         builder: (context, state) => const DashboardScreen(),
       ),
+    ],
+  ),
+  StatefulShellBranch(
+    routes: [
+      GoRoute(
+        path: '/clients',
+        builder: (context, state) => const ClientListScreen(),
+        routes: [
+          GoRoute(
+            path: 'create',
+            builder: (context, state) => const ClientFormScreen(),
+          ),
+          GoRoute(
+            path: 'edit/:id',
+            builder: (context, state) {
+              final clientId = state.pathParameters['id']!;
+              return ClientFormScreen(clientId: clientId);
+            },
+          ),
+          GoRoute(
+            path: ':id',
+            builder: (context, state) {
+              final clientId = state.pathParameters['id']!;
+              return ClientDetailScreen(clientId: clientId);
+            },
+          ),
+        ],
+      ),
+    ],
+  ),
+  StatefulShellBranch(
+    routes: [
       GoRoute(
         path: '/invoices',
         builder: (context, state) => const InvoiceListScreen(),
@@ -58,14 +82,184 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           ),
         ],
       ),
+    ],
+  ),
+  StatefulShellBranch(
+    routes: [
       GoRoute(
-        path: '/clients',
-        builder: (context, state) => const ClientListScreen(),
+        path: '/payments',
+        builder: (context, state) => const PaymentListScreen(),
+        routes: [
+          GoRoute(
+            path: 'create',
+            builder: (context, state) => const CreatePaymentScreen(),
+          ),
+        ],
       ),
+    ],
+  ),
+  StatefulShellBranch(
+    routes: [
+      GoRoute(
+        path: '/expenses',
+        builder: (context, state) => const ExpenseListScreen(),
+        routes: [
+          GoRoute(
+            path: 'create',
+            builder: (context, state) => const ExpenseFormScreen(),
+          ),
+          GoRoute(
+            path: 'edit/:id',
+            builder: (context, state) {
+              final expenseId = state.pathParameters['id']!;
+              return ExpenseFormScreen(expenseId: expenseId);
+            },
+          ),
+        ],
+      ),
+    ],
+  ),
+  StatefulShellBranch(
+    routes: [
+      GoRoute(
+        path: '/reports',
+        builder: (context, state) => const ReportsScreen(),
+        routes: [
+          GoRoute(
+            path: 'income',
+            builder: (context, state) => const IncomeReportScreen(),
+          ),
+          GoRoute(
+            path: ':type',
+            builder: (context, state) {
+              final type = state.pathParameters['type']!;
+              return ReportDetailScreen(reportType: type);
+            },
+          ),
+        ],
+      ),
+    ],
+  ),
+  StatefulShellBranch(
+    routes: [
       GoRoute(
         path: '/settings',
         builder: (context, state) => const SettingsScreen(),
+        routes: [
+          GoRoute(
+            path: 'business',
+            builder: (context, state) => const BusinessSettingsScreen(),
+          ),
+          GoRoute(
+            path: 'tax',
+            builder: (context, state) => const TaxSettingsScreen(),
+          ),
+          GoRoute(
+            path: 'notifications',
+            builder: (context, state) => const NotificationSettingsScreen(),
+          ),
+          GoRoute(
+            path: 'invoice',
+            builder: (context, state) => const InvoiceSettingsScreen(),
+          ),
+        ],
+      ),
+    ],
+  ),
+];
+
+final appRouterProvider = Provider<GoRouter>((ref) {
+  return GoRouter(
+    initialLocation: '/auth/login',
+    redirect: (context, state) {
+      final authState = ref.read(authProvider);
+      final isAuthenticated = authState.isAuthenticated;
+
+      if (isAuthenticated && state.location.startsWith('/auth')) {
+        return '/dashboard';
+      } else if (!isAuthenticated && !state.location.startsWith('/auth')) {
+        return '/auth/login';
+      }
+      return null;
+    },
+    routes: [
+      // Auth routes
+      GoRoute(
+        path: '/auth/login',
+        builder: (context, state) => const LoginScreen(),
+      ),
+      GoRoute(
+        path: '/auth/register',
+        builder: (context, state) => const RegisterScreen(),
+      ),
+      GoRoute(
+        path: '/auth/forgot-password',
+        builder: (context, state) => const ForgotPasswordScreen(),
+      ),
+
+      // Main app with bottom navigation
+      StatefulShellRoute(
+        branches: _shellRoutes,
+        builder: (context, state, navigationShell) {
+          return ScaffoldWithNavBar(navigationShell: navigationShell);
+        },
       ),
     ],
   );
 });
+
+// Scaffold with Bottom Navigation Bar
+class ScaffoldWithNavBar extends StatelessWidget {
+  final StatefulNavigationShell navigationShell;
+
+  const ScaffoldWithNavBar({
+    super.key,
+    required this.navigationShell,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: navigationShell,
+      bottomNavigationBar: BottomNavigationBar(
+        currentIndex: navigationShell.currentIndex,
+        onTap: (index) {
+          navigationShell.goBranch(index);
+        },
+        type: BottomNavigationBarType.fixed,
+        selectedItemColor: Colors.blue,
+        unselectedItemColor: Colors.grey,
+        items: const [
+          BottomNavigationBarItem(
+            icon: Icon(Icons.dashboard),
+            label: 'Dashboard',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.people),
+            label: 'Clients',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.description),
+            label: 'Invoices',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.payment),
+            label: 'Payments',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.receipt_long),
+            label: 'Expenses',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.analytics),
+            label: 'Reports',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.settings),
+            label: 'Settings',
+          ),
+        ],
+      ),
+    );
+  }
+}

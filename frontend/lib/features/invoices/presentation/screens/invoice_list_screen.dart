@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../providers/invoice_provider.dart';
-import '../../../shared/widgets/buttons/primary_button.dart';
+import '../../../../shared/widgets/empty_state.dart';
+import '../../../../shared/widgets/search_bar.dart';
+import '../../../../shared/widgets/filter_chip.dart';
 
 class InvoiceListScreen extends ConsumerStatefulWidget {
   const InvoiceListScreen({super.key});
@@ -12,12 +14,87 @@ class InvoiceListScreen extends ConsumerStatefulWidget {
 }
 
 class _InvoiceListScreenState extends ConsumerState<InvoiceListScreen> {
+  final TextEditingController _searchController = TextEditingController();
+  String _selectedStatus = 'all';
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      ref.read(invoiceProvider.notifier).loadInvoices();
+      _loadInvoices();
     });
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  void _loadInvoices() {
+    ref.read(invoiceProvider.notifier).loadInvoices(
+      status: _selectedStatus == 'all' ? null : _selectedStatus,
+      search: _searchController.text.isEmpty ? null : _searchController.text,
+    );
+  }
+
+  void _showFilterDialog() {
+    showModalBottomSheet(
+      context: context,
+      builder: (context) => Container(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Filter by Status',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 16),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                _buildFilterChip('all', 'All'),
+                _buildFilterChip('draft', 'Draft'),
+                _buildFilterChip('sent', 'Sent'),
+                _buildFilterChip('viewed', 'Viewed'),
+                _buildFilterChip('paid', 'Paid'),
+                _buildFilterChip('overdue', 'Overdue'),
+                _buildFilterChip('partial', 'Partial'),
+              ],
+            ),
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: () {
+                  context.pop();
+                  _loadInvoices();
+                },
+                child: const Text('Apply Filters'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFilterChip(String value, String label) {
+    return CustomFilterChip(
+      label: label,
+      isSelected: _selectedStatus == value,
+      onTap: () {
+        setState(() {
+          _selectedStatus = value;
+        });
+      },
+    );
   }
 
   @override
@@ -30,67 +107,91 @@ class _InvoiceListScreenState extends ConsumerState<InvoiceListScreen> {
         actions: [
           IconButton(
             icon: const Icon(Icons.filter_list),
-            onPressed: () {
-              // Show filter dialog
-            },
+            onPressed: _showFilterDialog,
           ),
         ],
       ),
-      body: invoiceState.isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : invoiceState.error != null
-              ? Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Icon(Icons.error_outline, size: 64, color: Colors.red),
-                      const SizedBox(height: 16),
-                      Text(
-                        invoiceState.error!,
-                        style: const TextStyle(color: Colors.red),
-                        textAlign: TextAlign.center,
-                      ),
-                      const SizedBox(height: 16),
-                      ElevatedButton(
-                        onPressed: () {
-                          ref.read(invoiceProvider.notifier).loadInvoices();
-                        },
-                        child: const Text('Retry'),
-                      ),
-                    ],
-                  ),
-                )
-              : invoiceState.invoices.isEmpty
-                  ? Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const Icon(Icons.inbox, size: 64, color: Colors.grey),
-                          const SizedBox(height: 16),
-                          const Text(
-                            'No invoices yet',
-                            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w500),
-                          ),
-                          const SizedBox(height: 8),
-                          const Text(
-                            'Create your first invoice to get started',
-                            style: TextStyle(color: Colors.grey),
-                          ),
-                        ],
-                      ),
-                    )
-                  : RefreshIndicator(
-                      onRefresh: () async {
-                        ref.read(invoiceProvider.notifier).loadInvoices();
-                      },
-                      child: ListView.builder(
-                        itemCount: invoiceState.invoices.length,
-                        itemBuilder: (context, index) {
-                          final invoice = invoiceState.invoices[index];
-                          return InvoiceCard(invoice: invoice);
-                        },
-                      ),
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: CustomSearchBar(
+              controller: _searchController,
+              hintText: 'Search invoices...',
+              onSearch: (value) => _loadInvoices(),
+            ),
+          ),
+          if (_selectedStatus != 'all')
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Row(
+                children: [
+                  Text(
+                    'Filter: ${_selectedStatus.toUpperCase()}',
+                    style: TextStyle(
+                      color: Colors.blue.shade700,
+                      fontWeight: FontWeight.w500,
                     ),
+                  ),
+                  const SizedBox(width: 8),
+                  TextButton(
+                    onPressed: () {
+                      setState(() {
+                        _selectedStatus = 'all';
+                        _searchController.clear();
+                      });
+                      _loadInvoices();
+                    },
+                    child: const Text('Clear'),
+                  ),
+                ],
+              ),
+            ),
+          Expanded(
+            child: invoiceState.isLoading && invoiceState.invoices.isEmpty
+                ? const Center(child: CircularProgressIndicator())
+                : invoiceState.error != null
+                    ? Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.error_outline, size: 64, color: Colors.red[300]),
+                            const SizedBox(height: 16),
+                            Text(
+                              invoiceState.error!,
+                              style: const TextStyle(color: Colors.red),
+                              textAlign: TextAlign.center,
+                            ),
+                            const SizedBox(height: 16),
+                            ElevatedButton(
+                              onPressed: _loadInvoices,
+                              child: const Text('Retry'),
+                            ),
+                          ],
+                        ),
+                      )
+                    : invoiceState.invoices.isEmpty
+                        ? const EmptyState(
+                            icon: Icons.description_outlined,
+                            title: 'No Invoices Found',
+                            message: 'Try adjusting your filters or create a new invoice',
+                          )
+                        : RefreshIndicator(
+                            onRefresh: () async {
+                              _loadInvoices();
+                            },
+                            child: ListView.builder(
+                              padding: const EdgeInsets.all(8),
+                              itemCount: invoiceState.invoices.length,
+                              itemBuilder: (context, index) {
+                                final invoice = invoiceState.invoices[index];
+                                return InvoiceCard(invoice: invoice);
+                              },
+                            ),
+                          ),
+          ),
+        ],
+      ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => context.go('/invoices/create'),
         label: const Text('New Invoice'),

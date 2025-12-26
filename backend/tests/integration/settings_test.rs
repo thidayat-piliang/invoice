@@ -118,20 +118,29 @@ async fn test_invoice_settings() {
 async fn test_all_settings_endpoints() {
     let client = setup_authenticated_client().await;
 
-    // Test all settings endpoints return valid responses
-    let endpoints = [
-        ("business", || client.get_business_settings()),
-        ("tax", || client.get_tax_settings()),
-        ("notifications", || client.get_notification_settings()),
-        ("invoice", || client.get_invoice_settings()),
-    ];
+    // Test business settings
+    let resp = client.get_business_settings().await.unwrap();
+    assert_eq!(resp.status(), 200, "business settings should return 200");
+    let data: Value = resp.json().await.unwrap();
+    assert!(data.is_object(), "business settings should return object");
 
-    for (name, get_fn) in endpoints {
-        let resp = get_fn().await.unwrap();
-        assert_eq!(resp.status(), 200, "{} settings should return 200", name);
-        let data: Value = resp.json().await.unwrap();
-        assert!(data.is_object(), "{} settings should return object", name);
-    }
+    // Test tax settings
+    let resp = client.get_tax_settings().await.unwrap();
+    assert_eq!(resp.status(), 200, "tax settings should return 200");
+    let data: Value = resp.json().await.unwrap();
+    assert!(data.is_object(), "tax settings should return object");
+
+    // Test notification settings
+    let resp = client.get_notification_settings().await.unwrap();
+    assert_eq!(resp.status(), 200, "notification settings should return 200");
+    let data: Value = resp.json().await.unwrap();
+    assert!(data.is_object(), "notification settings should return object");
+
+    // Test invoice settings
+    let resp = client.get_invoice_settings().await.unwrap();
+    assert_eq!(resp.status(), 200, "invoice settings should return 200");
+    let data: Value = resp.json().await.unwrap();
+    assert!(data.is_object(), "invoice settings should return object");
 }
 
 #[tokio::test]

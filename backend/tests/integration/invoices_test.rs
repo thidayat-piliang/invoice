@@ -89,8 +89,8 @@ async fn test_invoice_with_multiple_items() {
 
     // Create invoice with custom items
     let mut request = client.clone();
-    let resp = request.client.post(&format!("{}/api/v1/invoices", get_api_base_url()))
-        .header("Authorization", format!("Bearer {}", request.auth_token.unwrap()))
+    let resp = request.get_http_client().post(&format!("{}/api/v1/invoices", get_api_base_url()))
+        .header("Authorization", format!("Bearer {}", request.get_auth_token().unwrap()))
         .json(&serde_json::json!({
             "client_id": client_id,
             "items": [

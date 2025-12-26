@@ -1,68 +1,43 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import '../providers/invoice_provider.dart';
-import '../../../clients/presentation/providers/client_provider.dart';
+import '../providers/payment_provider.dart';
+import '../../../invoices/presentation/providers/invoice_provider.dart';
 
-class CreateInvoiceScreen extends ConsumerStatefulWidget {
-  const CreateInvoiceScreen({super.key});
+class CreatePaymentScreen extends ConsumerStatefulWidget {
+  const CreatePaymentScreen({super.key});
 
   @override
-  ConsumerState<CreateInvoiceScreen> createState() => _CreateInvoiceScreenState();
+  ConsumerState<CreatePaymentScreen> createState() => _CreatePaymentScreenState();
 }
 
-class _CreateInvoiceScreenState extends ConsumerState<CreateInvoiceScreen> {
+class _CreatePaymentScreenState extends ConsumerState<CreatePaymentScreen> {
   final _formKey = GlobalKey<FormState>();
-  String? _selectedClientId;
-  String? _selectedClientName;
-  final _descriptionController = TextEditingController();
-  final _quantityController = TextEditingController(text: '1');
-  final _priceController = TextEditingController();
+  String? _selectedInvoiceId;
+  String? _selectedInvoiceNumber;
+  double? _selectedInvoiceAmount;
+  final _amountController = TextEditingController();
+  final _methodController = TextEditingController(text: 'Cash');
   final _notesController = TextEditingController();
-  final _termsController = TextEditingController(text: 'Payment due within 30 days');
-
-  DateTime _issueDate = DateTime.now();
-  DateTime _dueDate = DateTime.now().add(const Duration(days: 30));
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      ref.read(clientProvider.notifier).loadClients();
+      ref.read(invoiceProvider.notifier).loadInvoices(status: 'unpaid');
     });
   }
 
   @override
   void dispose() {
-    _descriptionController.dispose();
-    _quantityController.dispose();
-    _priceController.dispose();
+    _amountController.dispose();
+    _methodController.dispose();
     _notesController.dispose();
-    _termsController.dispose();
     super.dispose();
   }
 
-  Future<void> _selectDate(bool isDueDate) async {
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: isDueDate ? _dueDate : _issueDate,
-      firstDate: DateTime.now(),
-      lastDate: DateTime.now().add(const Duration(days: 365)),
-    );
-
-    if (picked != null) {
-      setState(() {
-        if (isDueDate) {
-          _dueDate = picked;
-        } else {
-          _issueDate = picked;
-        }
-      });
-    }
-  }
-
-  void _showClientSelector() {
-    final clientState = ref.read(clientProvider);
+  void _showInvoiceSelector() {
+    final invoiceState = ref.read(invoiceProvider);
 
     showModalBottomSheet(
       context: context,
@@ -73,30 +48,34 @@ class _CreateInvoiceScreenState extends ConsumerState<CreateInvoiceScreen> {
             const Padding(
               padding: EdgeInsets.all(16),
               child: Text(
-                'Select Client',
+                'Select Invoice',
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
               ),
             ),
             Expanded(
-              child: clientState.clients.isEmpty
+              child: invoiceState.invoices.isEmpty
                   ? const Center(
                       child: Text(
-                        'No clients available\nPlease create a client first',
+                        'No unpaid invoices available',
                         textAlign: TextAlign.center,
                         style: TextStyle(color: Colors.grey),
                       ),
                     )
                   : ListView.builder(
-                      itemCount: clientState.clients.length,
+                      itemCount: invoiceState.invoices.length,
                       itemBuilder: (context, index) {
-                        final client = clientState.clients[index];
+                        final invoice = invoiceState.invoices[index];
                         return ListTile(
-                          title: Text(client.name),
-                          subtitle: Text(client.email ?? 'No email'),
+                          title: Text(invoice.invoiceNumber),
+                          subtitle: Text(
+                            '${invoice.clientName} - \$${invoice.balanceDue.toStringAsFixed(2)}',
+                          ),
                           onTap: () {
                             setState(() {
-                              _selectedClientId = client.id;
-                              _selectedClientName = client.name;
+                              _selectedInvoiceId = invoice.id;
+                              _selectedInvoiceNumber = invoice.invoiceNumber;
+                              _selectedInvoiceAmount = invoice.balanceDue;
+                              _amountController.text = invoice.balanceDue.toStringAsFixed(2);
                             });
                             context.pop();
                           },
@@ -110,55 +89,61 @@ class _CreateInvoiceScreenState extends ConsumerState<CreateInvoiceScreen> {
     );
   }
 
-  Future<void> _createInvoice() async {
+  Future<void> _createPayment() async {
     if (!_formKey.currentState!.validate()) return;
-    if (_selectedClientId == null) {
+    if (_selectedInvoiceId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Please select a client'),
+          content: Text('Please select an invoice'),
           backgroundColor: Colors.red,
         ),
       );
       return;
     }
 
-    final quantity = double.tryParse(_quantityController.text) ?? 1.0;
-    final price = double.tryParse(_priceController.text) ?? 0.0;
+    final amount = double.tryParse(_amountController.text) ?? 0.0;
+
+    if (amount <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Amount must be greater than 0'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    if (_selectedInvoiceAmount != null && amount > _selectedInvoiceAmount!) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Amount exceeds balance due'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
 
     final data = {
-      'client_id': _selectedClientId,
-      'issue_date': _issueDate.toIso8601String().split('T')[0],
-      'due_date': _dueDate.toIso8601String().split('T')[0],
-      'items': [
-        {
-          'description': _descriptionController.text,
-          'quantity': quantity,
-          'unit_price': price,
-          'amount': quantity * price,
-        }
-      ],
-      'subtotal': quantity * price,
-      'tax_amount': 0.0,
-      'discount_amount': 0.0,
-      'total_amount': quantity * price,
-      'notes': _notesController.text,
-      'terms': _termsController.text,
+      'invoice_id': _selectedInvoiceId,
+      'amount': amount,
+      'payment_method': _methodController.text,
+      'notes': _notesController.text.isEmpty ? null : _notesController.text,
     };
 
-    final success = await ref.read(invoiceProvider.notifier).createInvoice(data);
+    final success = await ref.read(paymentProvider.notifier).createPayment(data);
 
     if (success && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Invoice created successfully!'),
+          content: Text('Payment recorded successfully!'),
           backgroundColor: Colors.green,
         ),
       );
-      context.go('/invoices');
+      context.go('/payments');
     } else if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(ref.read(invoiceProvider).error ?? 'Failed to create invoice'),
+          content: Text(ref.read(paymentProvider).error ?? 'Failed to record payment'),
           backgroundColor: Colors.red,
         ),
       );
@@ -167,15 +152,15 @@ class _CreateInvoiceScreenState extends ConsumerState<CreateInvoiceScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final paymentState = ref.watch(paymentProvider);
     final invoiceState = ref.watch(invoiceProvider);
-    final clientState = ref.watch(clientProvider);
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Create Invoice'),
+        title: const Text('Record Payment'),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
-          onPressed: () => context.go('/invoices'),
+          onPressed: () => context.go('/payments'),
         ),
       ),
       body: Form(
@@ -185,14 +170,14 @@ class _CreateInvoiceScreenState extends ConsumerState<CreateInvoiceScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Client Selection
+              // Invoice Selection
               const Text(
-                'Client',
+                'Invoice',
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
               ),
               const SizedBox(height: 12),
               InkWell(
-                onTap: _showClientSelector,
+                onTap: _showInvoiceSelector,
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
                   decoration: BoxDecoration(
@@ -203,9 +188,9 @@ class _CreateInvoiceScreenState extends ConsumerState<CreateInvoiceScreen> {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Text(
-                        _selectedClientName ?? 'Select a client',
+                        _selectedInvoiceNumber ?? 'Select an invoice',
                         style: TextStyle(
-                          color: _selectedClientName != null ? Colors.black : Colors.grey,
+                          color: _selectedInvoiceNumber != null ? Colors.black : Colors.grey,
                         ),
                       ),
                       const Icon(Icons.arrow_drop_down),
@@ -213,18 +198,18 @@ class _CreateInvoiceScreenState extends ConsumerState<CreateInvoiceScreen> {
                   ),
                 ),
               ),
-              if (clientState.clients.isEmpty) ...[
+              if (invoiceState.invoices.isEmpty) ...[
                 const SizedBox(height: 8),
                 Row(
                   children: [
                     const Text(
-                      'No clients available. ',
+                      'No unpaid invoices. ',
                       style: TextStyle(color: Colors.grey, fontSize: 12),
                     ),
                     GestureDetector(
-                      onTap: () => context.go('/clients/create'),
+                      onTap: () => context.go('/invoices'),
                       child: Text(
-                        'Create a client first',
+                        'View invoices',
                         style: TextStyle(
                           color: Colors.blue.shade700,
                           fontWeight: FontWeight.w600,
@@ -237,89 +222,32 @@ class _CreateInvoiceScreenState extends ConsumerState<CreateInvoiceScreen> {
               ],
               const SizedBox(height: 24),
 
-              // Dates
+              // Payment Amount
               const Text(
-                'Dates',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
-              ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(
-                    child: _buildDateField(
-                      label: 'Issue Date',
-                      date: _issueDate,
-                      onTap: () => _selectDate(false),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: _buildDateField(
-                      label: 'Due Date',
-                      date: _dueDate,
-                      onTap: () => _selectDate(true),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 24),
-
-              // Items
-              const Text(
-                'Invoice Items',
+                'Payment Details',
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
               ),
               const SizedBox(height: 12),
               _buildTextField(
-                label: 'Description *',
-                controller: _descriptionController,
-                hint: 'Product or service description',
-                maxLines: 2,
+                label: 'Amount *',
+                controller: _amountController,
+                keyboardType: TextInputType.number,
+                prefixText: '\$',
                 required: true,
               ),
               const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(
-                    child: _buildTextField(
-                      label: 'Quantity *',
-                      controller: _quantityController,
-                      keyboardType: TextInputType.number,
-                      required: true,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: _buildTextField(
-                      label: 'Unit Price *',
-                      controller: _priceController,
-                      keyboardType: TextInputType.number,
-                      hint: '\$0.00',
-                      required: true,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 24),
-
-              // Notes & Terms
-              const Text(
-                'Additional Info',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+              _buildTextField(
+                label: 'Payment Method *',
+                controller: _methodController,
+                hint: 'Cash, Credit Card, Bank Transfer, etc.',
+                required: true,
               ),
               const SizedBox(height: 12),
               _buildTextField(
                 label: 'Notes (Optional)',
                 controller: _notesController,
-                hint: 'Thank you for your business!',
+                hint: 'Additional notes',
                 maxLines: 3,
-              ),
-              const SizedBox(height: 12),
-              _buildTextField(
-                label: 'Terms (Optional)',
-                controller: _termsController,
-                hint: 'Payment terms',
-                maxLines: 2,
               ),
               const SizedBox(height: 32),
 
@@ -328,7 +256,7 @@ class _CreateInvoiceScreenState extends ConsumerState<CreateInvoiceScreen> {
                 children: [
                   Expanded(
                     child: OutlinedButton(
-                      onPressed: () => context.go('/invoices'),
+                      onPressed: () => context.go('/payments'),
                       style: OutlinedButton.styleFrom(
                         minimumSize: const Size(double.infinity, 48),
                         shape: RoundedRectangleBorder(
@@ -341,15 +269,15 @@ class _CreateInvoiceScreenState extends ConsumerState<CreateInvoiceScreen> {
                   const SizedBox(width: 12),
                   Expanded(
                     child: ElevatedButton(
-                      onPressed: invoiceState.isLoading ? null : _createInvoice,
+                      onPressed: paymentState.isLoading ? null : _createPayment,
                       style: ElevatedButton.styleFrom(
                         minimumSize: const Size(double.infinity, 48),
-                        backgroundColor: Colors.blue,
+                        backgroundColor: Colors.green,
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(8),
                         ),
                       ),
-                      child: invoiceState.isLoading
+                      child: paymentState.isLoading
                           ? const SizedBox(
                               width: 20,
                               height: 20,
@@ -359,7 +287,7 @@ class _CreateInvoiceScreenState extends ConsumerState<CreateInvoiceScreen> {
                               ),
                             )
                           : const Text(
-                              'Create',
+                              'Record Payment',
                               style: TextStyle(
                                 fontSize: 16,
                                 fontWeight: FontWeight.w600,
@@ -376,47 +304,11 @@ class _CreateInvoiceScreenState extends ConsumerState<CreateInvoiceScreen> {
     );
   }
 
-  Widget _buildDateField({
-    required String label,
-    required DateTime date,
-    required VoidCallback onTap,
-  }) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: const TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-        const SizedBox(height: 4),
-        InkWell(
-          onTap: onTap,
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-            decoration: BoxDecoration(
-              border: Border.all(color: Colors.grey.shade300),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text('${date.month}/${date.day}/${date.year}'),
-                const Icon(Icons.calendar_today, size: 18),
-              ],
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
   Widget _buildTextField({
     required String label,
     required TextEditingController controller,
     String? hint,
+    String? prefixText,
     TextInputType keyboardType = TextInputType.text,
     int maxLines = 1,
     bool required = false,
@@ -436,6 +328,7 @@ class _CreateInvoiceScreenState extends ConsumerState<CreateInvoiceScreen> {
           controller: controller,
           decoration: InputDecoration(
             hintText: hint,
+            prefixText: prefixText,
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8),
             ),
@@ -447,9 +340,9 @@ class _CreateInvoiceScreenState extends ConsumerState<CreateInvoiceScreen> {
             if (required && (value == null || value.isEmpty)) {
               return 'This field is required';
             }
-            if (label.contains('Price') || label.contains('Quantity')) {
+            if (label.contains('Amount')) {
               if (value != null && value.isNotEmpty && double.tryParse(value) == null) {
-                return 'Invalid number';
+                return 'Invalid amount';
               }
             }
             return null;

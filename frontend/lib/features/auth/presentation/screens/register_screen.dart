@@ -18,6 +18,8 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
   final _companyNameController = TextEditingController();
+  final _phoneController = TextEditingController();
+  String? _businessType;
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
 
@@ -27,6 +29,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     _passwordController.dispose();
     _confirmPasswordController.dispose();
     _companyNameController.dispose();
+    _phoneController.dispose();
     super.dispose();
   }
 
@@ -38,6 +41,8 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
       _emailController.text.trim(),
       _passwordController.text,
       _companyNameController.text.isNotEmpty ? _companyNameController.text : null,
+      _phoneController.text.isNotEmpty ? _phoneController.text : null,
+      _businessType,
     );
 
     if (success && mounted) {
@@ -119,6 +124,38 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                     label: 'Company Name (Optional)',
                     hint: 'Your business name',
                     controller: _companyNameController,
+                  ),
+                  const SizedBox(height: 16),
+
+                  AppTextField(
+                    label: 'Phone (Optional)',
+                    hint: 'Your phone number',
+                    controller: _phoneController,
+                    keyboardType: TextInputType.phone,
+                  ),
+                  const SizedBox(height: 16),
+
+                  DropdownButtonFormField<String>(
+                    decoration: const InputDecoration(
+                      labelText: 'Business Type (Optional)',
+                      filled: true,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.all(Radius.circular(8)),
+                      ),
+                    ),
+                    value: _businessType,
+                    items: const [
+                      DropdownMenuItem(value: 'freelancer', child: Text('Freelancer')),
+                      DropdownMenuItem(value: 'consultant', child: Text('Consultant')),
+                      DropdownMenuItem(value: 'retail', child: Text('Retail')),
+                      DropdownMenuItem(value: 'service', child: Text('Service')),
+                      DropdownMenuItem(value: 'other', child: Text('Other')),
+                    ],
+                    onChanged: (value) {
+                      setState(() {
+                        _businessType = value;
+                      });
+                    },
                   ),
                   const SizedBox(height: 16),
 

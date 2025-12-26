@@ -134,8 +134,8 @@ async fn test_report_with_date_range() {
 
     // Test with invalid date format
     let mut request = client.clone();
-    let resp = request.client.get(&format!("{}/api/v1/reports/income?start_date=invalid&end_date=2025-12-31", get_api_base_url()))
-        .header("Authorization", format!("Bearer {}", request.auth_token.unwrap()))
+    let resp = request.get_http_client().get(&format!("{}/api/v1/reports/income?start_date=invalid&end_date=2025-12-31", get_api_base_url()))
+        .header("Authorization", format!("Bearer {}", request.get_auth_token().unwrap()))
         .send()
         .await.unwrap();
 

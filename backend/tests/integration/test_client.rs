@@ -1,5 +1,4 @@
 use reqwest::Client;
-use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
 #[derive(Clone)]
@@ -25,6 +24,18 @@ impl ApiTestClient {
 
     pub fn set_token(&mut self, token: String) {
         self.auth_token = Some(token);
+    }
+
+    pub fn get_http_client(&self) -> &Client {
+        &self.client
+    }
+
+    pub fn get_auth_token(&self) -> Option<&str> {
+        self.auth_token.as_deref()
+    }
+
+    pub fn get_base_url(&self) -> &str {
+        &self.base_url
     }
 
     fn get_auth_header(&self) -> Option<String> {

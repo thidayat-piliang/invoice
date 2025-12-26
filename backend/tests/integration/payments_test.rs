@@ -145,8 +145,8 @@ async fn test_payment_with_different_methods() {
     let methods = ["stripe", "paypal", "check", "cash"];
     for method in methods {
         let mut request = client.clone();
-        let resp = request.client.post(&format!("{}/api/v1/payments", get_api_base_url()))
-            .header("Authorization", format!("Bearer {}", request.auth_token.unwrap()))
+        let resp = request.get_http_client().post(&format!("{}/api/v1/payments", get_api_base_url()))
+            .header("Authorization", format!("Bearer {}", request.get_auth_token().unwrap()))
             .json(&serde_json::json!({
                 "invoice_id": invoice_id,
                 "amount": 50.0,

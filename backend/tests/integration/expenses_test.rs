@@ -98,8 +98,8 @@ async fn test_expense_tax_deductible() {
 
     // Create non-deductible expense
     let mut request = client.clone();
-    let resp = request.client.post(&format!("{}/api/v1/expenses", get_api_base_url()))
-        .header("Authorization", format!("Bearer {}", request.auth_token.unwrap()))
+    let resp = request.get_http_client().post(&format!("{}/api/v1/expenses", get_api_base_url()))
+        .header("Authorization", format!("Bearer {}", request.get_auth_token().unwrap()))
         .json(&serde_json::json!({
             "amount": 300.0,
             "category": "meals",
@@ -126,8 +126,8 @@ async fn test_expense_validation() {
 
     // Missing required fields
     let mut request = client.clone();
-    let resp = request.client.post(&format!("{}/api/v1/expenses", get_api_base_url()))
-        .header("Authorization", format!("Bearer {}", request.auth_token.unwrap()))
+    let resp = request.get_http_client().post(&format!("{}/api/v1/expenses", get_api_base_url()))
+        .header("Authorization", format!("Bearer {}", request.get_auth_token().unwrap()))
         .json(&serde_json::json!({
             "amount": 100.0,
             // Missing category, vendor, date_incurred
