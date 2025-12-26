@@ -1,0 +1,51 @@
+# Rust
+target/
+backend/target/
+Cargo.lock
+**/*.rs.bak
+
+# Flutter
+.dart_tool/
+.packages
+pubspec.lock
+.flutter-plugins
+.flutter-plugins-dependencies
+build/
+flutter_*.png
+linked_*.ds
+unlinked_ds/
+unlinked_spec/
+
+# Environment
+.env
+.env.local
+.env.production
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Temporary files
+*.tmp
+*.temp
+
+# Docker
+.dockerignore
+
+.github/
