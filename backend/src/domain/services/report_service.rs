@@ -574,4 +574,58 @@ impl<R: ReportRepository> ReportService<R> {
 
         Ok(pdf)
     }
+
+    // Cache Invalidation Methods
+    pub async fn invalidate_overview_cache(&self, user_id: Uuid) {
+        if let Some(redis) = &self.redis {
+            let cache_key = format!("overview_stats:{}", user_id);
+            let _ = redis.delete(&cache_key).await;
+        }
+    }
+
+    pub async fn invalidate_income_cache(&self, user_id: Uuid, start_date: NaiveDate, end_date: NaiveDate) {
+        if let Some(redis) = &self.redis {
+            let cache_key = self.get_cache_key("income", user_id, start_date, end_date);
+            let _ = redis.delete(&cache_key).await;
+        }
+    }
+
+    pub async fn invalidate_expenses_cache(&self, user_id: Uuid, start_date: NaiveDate, end_date: NaiveDate) {
+        if let Some(redis) = &self.redis {
+            let cache_key = self.get_cache_key("expenses", user_id, start_date, end_date);
+            let _ = redis.delete(&cache_key).await;
+        }
+    }
+
+    pub async fn invalidate_tax_cache(&self, user_id: Uuid, start_date: NaiveDate, end_date: NaiveDate) {
+        if let Some(redis) = &self.redis {
+            let cache_key = self.get_cache_key("tax", user_id, start_date, end_date);
+            let _ = redis.delete(&cache_key).await;
+        }
+    }
+
+    pub async fn invalidate_aging_cache(&self, user_id: Uuid) {
+        if let Some(redis) = &self.redis {
+            let cache_key = format!("aging:{}", user_id);
+            let _ = redis.delete(&cache_key).await;
+        }
+    }
+
+    /// Invalidate all report caches for a user
+    pub async fn invalidate_all_user_cache(&self, user_id: Uuid) {
+        if let Some(redis) = &self.redis {
+            // Clear all cache patterns for this user
+            let patterns = vec![
+                format!("overview_stats:{}", user_id),
+                format!("aging:{}", user_id),
+                format!("report:income:{}:*", user_id),
+                format!("report:expenses:{}:*", user_id),
+                format!("report:tax:{}:*", user_id),
+            ];
+
+            for pattern in patterns {
+                let _ = redis.clear_pattern(&pattern).await;
+            }
+        }
+    }
 }

@@ -8,3 +8,4 @@ pub mod settings;
 pub mod metrics;
 pub mod files;
 pub mod tax;
+pub mod paypal;

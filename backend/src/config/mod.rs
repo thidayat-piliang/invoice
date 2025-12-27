@@ -1,5 +1,8 @@
 use serde::Deserialize;
 use std::env;
+use crate::config::validation::{validate_env, print_config_summary};
+
+pub mod validation;
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct Config {
@@ -34,6 +37,44 @@ impl Config {
             smtp_pass: env::var("SMTP_PASS").unwrap_or_else(|_| "pass".to_string()),
             from_email: env::var("FROM_EMAIL").unwrap_or_else(|_| "noreply@flashbill.com".to_string()),
             from_name: env::var("FROM_NAME").unwrap_or_else(|_| "FlashBill".to_string()),
+        }
+    }
+
+    /// Validate configuration and print summary
+    pub fn validate_and_print() {
+        match validate_env() {
+            Ok(result) => {
+                if !result.is_valid() {
+                    eprintln!("❌ Configuration validation failed!");
+                    if !result.missing_vars.is_empty() {
+                        eprintln!("Missing required variables:");
+                        for var in &result.missing_vars {
+                            eprintln!("  - {}", var);
+                        }
+                    }
+                    if !result.invalid_vars.is_empty() {
+                        eprintln!("Invalid values:");
+                        for (var, reason) in &result.invalid_vars {
+                            eprintln!("  - {}: {}", var, reason);
+                        }
+                    }
+                    panic!("Configuration validation failed");
+                }
+
+                if result.has_warnings() {
+                    println!("⚠️  Configuration warnings:");
+                    for warning in &result.warnings {
+                        println!("  - {}", warning);
+                    }
+                    println!();
+                }
+
+                print_config_summary();
+            }
+            Err(e) => {
+                eprintln!("❌ Configuration validation error: {}", e);
+                panic!("Configuration error");
+            }
         }
     }
 }

@@ -20,8 +20,8 @@ use tower_http::{
 use std::time::Duration;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-use crate::api::routes::{auth, invoices, reports, settings, clients, payments, expenses, metrics, files, tax};
-use crate::domain::services::{InvoiceService, AuthService, EmailService, EmailConfig, PdfService, ReportService, SettingsService, ClientService, PaymentService, ExpenseService, RedisService, MetricsService, FileService, NotificationService, TaxService};
+use crate::api::routes::{auth, invoices, reports, settings, clients, payments, expenses, metrics, files, tax, paypal};
+use crate::domain::services::{InvoiceService, AuthService, EmailService, EmailConfig, PdfService, ReportService, SettingsService, ClientService, PaymentService, ExpenseService, RedisService, MetricsService, FileService, NotificationService, TaxService, PaymentGatewayService, MonitoringService, EmailQueueService};
 use crate::application::use_cases::*;
 use crate::infrastructure::repositories::{InvoiceRepository, ClientRepository, UserRepository, ReportRepositoryImpl, PaymentRepository, ExpenseRepository, TaxRepositoryImpl};
 use crate::domain::repositories::TaxRepository;
@@ -36,6 +36,11 @@ async fn main() {
         )
         .with(tracing_subscriber::fmt::layer())
         .init();
+
+    // Validate environment variables and print configuration summary
+    tracing::info!("🔍 Validating configuration...");
+    crate::config::Config::validate_and_print();
+    tracing::info!("✅ Configuration validated successfully\n");
 
     // Load configuration
     let database_url = std::env::var("DATABASE_URL")
@@ -77,6 +82,23 @@ async fn main() {
     // Initialize tax service (needed for invoice repository)
     let tax_service = Arc::new(TaxService::new(tax_repo.clone()));
     tracing::info!("✅ Tax service initialized");
+
+    // Initialize payment gateway service (PayPal and Stripe)
+    let payment_gateway_service = match PaymentGatewayService::new() {
+        Ok(service) => {
+            let gateways = service.get_available_gateways();
+            if gateways.is_empty() {
+                tracing::warn!("⚠️ Payment gateways not configured. Set STRIPE_SECRET_KEY and/or PAYPAL_CLIENT_ID/PAYPAL_CLIENT_SECRET");
+            } else {
+                tracing::info!("✅ Payment gateway service initialized: {:?}", gateways);
+            }
+            Arc::new(service)
+        }
+        Err(e) => {
+            tracing::warn!("⚠️ Payment gateway service initialization failed: {}", e);
+            Arc::new(PaymentGatewayService::default())
+        }
+    };
 
     // Initialize invoice repository with tax service
     let invoice_repo = InvoiceRepository::new(db_pool.clone(), tax_service.clone());
@@ -124,6 +146,20 @@ async fn main() {
 
     let notification_service = Arc::new(NotificationService::new().expect("Failed to initialize notification service"));
     tracing::info!("✅ Notification service initialized");
+
+    // Initialize monitoring service
+    let monitoring_service = Arc::new(MonitoringService::new());
+    tracing::info!("✅ Monitoring service initialized");
+
+    // Initialize email queue service (if Redis available)
+    let email_queue_service = if let Some(redis) = &redis_service {
+        let queue = Arc::new(EmailQueueService::new(redis.clone(), email_service.clone()));
+        tracing::info!("✅ Email queue service initialized");
+        Some(queue)
+    } else {
+        tracing::warn!("⚠️ Email queue disabled (Redis not available)");
+        None
+    };
 
     // Initialize services with repositories and other services
     // Clone invoice_repo before moving it into invoice_service
@@ -295,6 +331,7 @@ async fn main() {
                 get_payment_stats_uc,
                 get_payment_methods_uc,
             ))
+            .nest("/paypal", paypal::create_paypal_router(payment_gateway_service.clone()))
             .nest("/expenses", expenses::create_router(
                 create_expense_uc,
                 get_expense_uc,
@@ -308,7 +345,12 @@ async fn main() {
             .nest("/tax", tax::create_operations_router(tax_state))
         )
         // Metrics endpoint (public, no auth required)
-        .nest("/metrics", metrics::create_router(metrics_service.clone()))
+        .nest("/metrics", metrics::create_router(
+            metrics_service.clone(),
+            monitoring_service.clone(),
+            redis_service.clone(),
+            Some(db_pool.clone()),
+        ))
         .layer(Extension(auth_service))  // Add auth service to extensions for AuthUser extractor
         // Security: CORS configuration
         .layer(

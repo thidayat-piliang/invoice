@@ -14,7 +14,7 @@ tower-http = { version = "0.6.8", features = ["cors", "trace", "limit", "set-hea
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-serde_yaml = "0.9.34"
+serde_yaml = "0.9.34-deprecated"
 
 # Database
 sqlx = { version = "0.8.6", features = ["postgres", "runtime-tokio-rustls", "uuid", "chrono", "json"] }

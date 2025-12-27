@@ -115,4 +115,26 @@ impl RedisService {
         }
         Ok(())
     }
+
+    /// Push to left of list
+    pub async fn lpush(&self, key: &str, value: &str) -> Result<(), RedisErrorWrapper> {
+        let mut conn = self.get_async_connection().await?;
+        conn.lpush(key, value).await?;
+        Ok(())
+    }
+
+    /// Pop from right of list
+    pub async fn rpop(&self, key: &str) -> Result<Option<String>, RedisErrorWrapper> {
+        let mut conn = self.get_async_connection().await?;
+        use std::num::NonZero;
+        let result: Option<String> = conn.rpop(key, NonZero::new(1)).await?;
+        Ok(result)
+    }
+
+    /// Get list length
+    pub async fn llen(&self, key: &str) -> Result<Option<i64>, RedisErrorWrapper> {
+        let mut conn = self.get_async_connection().await?;
+        let result: i64 = conn.llen(key).await?;
+        Ok(Some(result))
+    }
 }

@@ -28,11 +28,17 @@ pub struct EmailConfig {
 
 pub struct EmailService {
     config: EmailConfig,
+    skip_queue: bool,
 }
 
 impl EmailService {
     pub fn new(config: EmailConfig) -> Self {
-        Self { config }
+        let skip_queue = std::env::var("SKIP_QUEUE").is_ok();
+        Self { config, skip_queue }
+    }
+
+    pub fn is_skip_queue(&self) -> bool {
+        self.skip_queue
     }
 
     pub fn send_invoice(
