@@ -9,13 +9,17 @@ import '../../features/dashboard/presentation/dashboard_screen.dart';
 import '../../features/invoices/presentation/screens/invoice_list_screen.dart';
 import '../../features/invoices/presentation/screens/create_invoice_screen.dart';
 import '../../features/invoices/presentation/screens/invoice_detail_screen.dart';
+import '../../features/invoices/presentation/screens/pdf_preview_screen.dart';
 import '../../features/clients/presentation/screens/client_list_screen.dart';
 import '../../features/clients/presentation/screens/client_form_screen.dart';
 import '../../features/clients/presentation/screens/client_detail_screen.dart';
 import '../../features/payments/presentation/screens/payment_list_screen.dart';
 import '../../features/payments/presentation/screens/create_payment_screen.dart';
+import '../../features/payments/presentation/screens/paypal_checkout_screen.dart';
+import '../../features/payments/presentation/screens/paypal_refund_screen.dart';
 import '../../features/expenses/presentation/screens/expense_list_screen.dart';
 import '../../features/expenses/presentation/screens/expense_form_screen.dart';
+import '../../features/expenses/presentation/screens/receipt_upload_screen.dart';
 import '../../features/reports/presentation/screens/reports_screen.dart';
 import '../../features/reports/presentation/screens/income_report_screen.dart';
 import '../../features/reports/presentation/screens/report_detail_screen.dart';
@@ -80,6 +84,13 @@ final _shellRoutes = [
               return InvoiceDetailScreen(invoiceId: invoiceId);
             },
           ),
+          GoRoute(
+            path: 'pdf-preview/:id',
+            builder: (context, state) {
+              final invoiceId = state.pathParameters['id']!;
+              return PdfPreviewScreen(invoiceId: invoiceId);
+            },
+          ),
         ],
       ),
     ],
@@ -93,6 +104,30 @@ final _shellRoutes = [
           GoRoute(
             path: 'create',
             builder: (context, state) => const CreatePaymentScreen(),
+          ),
+          GoRoute(
+            path: 'paypal-checkout',
+            builder: (context, state) {
+              final extra = state.extra as Map<String, dynamic>?;
+              return PayPalCheckoutScreen(
+                amount: extra?['amount'] ?? 0.0,
+                currency: extra?['currency'] ?? 'USD',
+                description: extra?['description'] ?? '',
+                invoiceId: extra?['invoiceId'],
+                customerEmail: extra?['customerEmail'],
+              );
+            },
+          ),
+          GoRoute(
+            path: 'paypal-refund/:orderId',
+            builder: (context, state) {
+              final orderId = state.pathParameters['orderId']!;
+              final maxAmount = (state.extra as double?) ?? 0.0;
+              return PayPalRefundScreen(
+                orderId: orderId,
+                maxAmount: maxAmount,
+              );
+            },
           ),
         ],
       ),
@@ -113,6 +148,13 @@ final _shellRoutes = [
             builder: (context, state) {
               final expenseId = state.pathParameters['id']!;
               return ExpenseFormScreen(expenseId: expenseId);
+            },
+          ),
+          GoRoute(
+            path: 'receipt/:id',
+            builder: (context, state) {
+              final expenseId = state.pathParameters['id']!;
+              return ReceiptUploadScreen(expenseId: expenseId);
             },
           ),
         ],

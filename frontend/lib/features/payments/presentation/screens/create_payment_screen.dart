@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../providers/payment_provider.dart';
+import '../providers/paypal_provider.dart';
 import '../../../invoices/presentation/providers/invoice_provider.dart';
 
 class CreatePaymentScreen extends ConsumerStatefulWidget {
@@ -249,6 +250,49 @@ class _CreatePaymentScreenState extends ConsumerState<CreatePaymentScreen> {
                 hint: 'Additional notes',
                 maxLines: 3,
               ),
+              const SizedBox(height: 24),
+
+              // PayPal Option
+              const Text(
+                'Or use PayPal',
+                style: TextStyle(fontSize: 14, color: Colors.grey),
+              ),
+              const SizedBox(height: 8),
+              OutlinedButton.icon(
+                onPressed: _selectedInvoiceId == null
+                    ? null
+                    : () {
+                        final amount = double.tryParse(_amountController.text) ?? 0.0;
+                        if (amount <= 0) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Please enter a valid amount first'),
+                              backgroundColor: Colors.red,
+                            ),
+                          );
+                          return;
+                        }
+                        context.go(
+                          '/payments/paypal-checkout',
+                          extra: {
+                            'amount': amount,
+                            'currency': 'USD',
+                            'description': 'Payment for invoice $_selectedInvoiceNumber',
+                            'invoiceId': _selectedInvoiceId,
+                          },
+                        );
+                      },
+                icon: const Icon(Icons.payment),
+                label: const Text('Pay with PayPal'),
+                style: OutlinedButton.styleFrom(
+                  minimumSize: const Size(double.infinity, 48),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  side: BorderSide(color: Colors.blue.shade300),
+                ),
+              ),
+
               const SizedBox(height: 32),
 
               // Actions

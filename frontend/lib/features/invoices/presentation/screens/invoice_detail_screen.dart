@@ -458,6 +458,26 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
           ],
         ),
         const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: () => context.go('/invoices/pdf-preview/${widget.invoiceId}'),
+                icon: const Icon(Icons.picture_as_pdf),
+                label: const Text('Preview PDF'),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: _downloadPdf,
+                icon: const Icon(Icons.download),
+                label: const Text('Download'),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
         if (invoice.balanceDue > 0)
           SizedBox(
             width: double.infinity,

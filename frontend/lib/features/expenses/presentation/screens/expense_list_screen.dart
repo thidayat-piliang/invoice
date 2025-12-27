@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -5,6 +6,7 @@ import '../providers/expense_provider.dart';
 import '../../../../shared/widgets/empty_state.dart';
 import '../../../../shared/widgets/search_bar.dart';
 import '../../../../shared/widgets/filter_chip.dart';
+import '../../../../shared/services/image_picker_service.dart';
 
 class ExpenseListScreen extends ConsumerStatefulWidget {
   const ExpenseListScreen({super.key});
@@ -236,7 +238,7 @@ class _ExpenseListScreenState extends ConsumerState<ExpenseListScreen> {
   }
 }
 
-class _ExpenseCard extends StatelessWidget {
+class _ExpenseCard extends ConsumerWidget {
   final Expense expense;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
@@ -248,7 +250,7 @@ class _ExpenseCard extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
       child: ListTile(
@@ -309,58 +311,21 @@ class _ExpenseCard extends StatelessWidget {
                   fontWeight: FontWeight.w600,
                 ),
               ),
+            if (expense.hasReceipt)
+              Icon(
+                Icons.receipt,
+                size: 14,
+                color: Colors.blue.shade700,
+              ),
           ],
         ),
         onTap: () {
           showModalBottomSheet(
             context: context,
-            builder: (context) => Container(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Text(
-                    'Expense Options',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                      onPressed: () {
-                        context.pop();
-                        onEdit();
-                      },
-                      icon: const Icon(Icons.edit),
-                      label: const Text('Edit Expense'),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                      onPressed: () {
-                        context.pop();
-                        onDelete();
-                      },
-                      icon: const Icon(Icons.delete),
-                      label: const Text('Delete Expense'),
-                      style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton(
-                      onPressed: () => context.pop(),
-                      child: const Text('Close'),
-                    ),
-                  ),
-                ],
-              ),
+            builder: (context) => _ExpenseOptionsBottomSheet(
+              expense: expense,
+              onEdit: onEdit,
+              onDelete: onDelete,
             ),
           );
         },
@@ -370,5 +335,159 @@ class _ExpenseCard extends StatelessWidget {
 
   String _formatDate(DateTime date) {
     return '${date.day}/${date.month}/${date.year}';
+  }
+}
+
+class _ExpenseOptionsBottomSheet extends ConsumerStatefulWidget {
+  final Expense expense;
+  final VoidCallback onEdit;
+  final VoidCallback onDelete;
+
+  const _ExpenseOptionsBottomSheet({
+    required this.expense,
+    required this.onEdit,
+    required this.onDelete,
+  });
+
+  @override
+  ConsumerState<_ExpenseOptionsBottomSheet> createState() => _ExpenseOptionsBottomSheetState();
+}
+
+class _ExpenseOptionsBottomSheetState extends ConsumerState<_ExpenseOptionsBottomSheet> {
+  final ImagePickerService _imagePicker = ImagePickerService();
+  bool _isUploading = false;
+
+  Future<void> _uploadReceipt() async {
+    final file = await _imagePicker.showImageSourceDialog(context);
+    if (file == null || !mounted) return;
+
+    // Validate image
+    final isValid = await _imagePicker.validateImage(file);
+    if (!isValid && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Invalid image. Please select a valid image file (max 10MB)'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    setState(() => _isUploading = true);
+
+    final size = await _imagePicker.getFileSizeInMB(file);
+    final success = await ref
+        .read(expenseProvider.notifier)
+        .uploadReceipt(widget.expense.id, file.path, size);
+
+    setState(() => _isUploading = false);
+
+    if (mounted) {
+      context.pop();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(success ? 'Receipt uploaded successfully!' : 'Failed to upload receipt'),
+          backgroundColor: success ? Colors.green : Colors.red,
+        ),
+      );
+    }
+  }
+
+  Future<void> _viewReceipt() async {
+    // For now, we'll show a dialog with receipt info
+    // In a real app, you might download and display the image
+    if (!mounted) return;
+
+    context.pop();
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Receipt viewing would open the image here'),
+        backgroundColor: Colors.blue,
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Text(
+            'Expense Options',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 16),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: () {
+                context.pop();
+                widget.onEdit();
+              },
+              icon: const Icon(Icons.edit),
+              label: const Text('Edit Expense'),
+            ),
+          ),
+          const SizedBox(height: 8),
+          if (widget.expense.hasReceipt)
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: _isUploading ? null : _viewReceipt,
+                icon: const Icon(Icons.visibility),
+                label: const Text('View Receipt'),
+              ),
+            ),
+          if (widget.expense.hasReceipt) const SizedBox(height: 8),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: _isUploading ? null : _uploadReceipt,
+              icon: _isUploading
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.blue),
+                      ),
+                    )
+                  : const Icon(Icons.receipt_long),
+              label: Text(
+                _isUploading
+                    ? 'Uploading...'
+                    : (widget.expense.hasReceipt ? 'Replace Receipt' : 'Upload Receipt'),
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: () {
+                context.pop();
+                widget.onDelete();
+              },
+              icon: const Icon(Icons.delete),
+              label: const Text('Delete Expense'),
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            ),
+          ),
+          const SizedBox(height: 8),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton(
+              onPressed: () => context.pop(),
+              child: const Text('Close'),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }

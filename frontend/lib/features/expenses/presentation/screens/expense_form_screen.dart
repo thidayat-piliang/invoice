@@ -1,7 +1,9 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../providers/expense_provider.dart';
+import '../../../../shared/services/image_picker_service.dart';
 
 class ExpenseFormScreen extends ConsumerStatefulWidget {
   final String? expenseId;
@@ -18,8 +20,11 @@ class _ExpenseFormScreenState extends ConsumerState<ExpenseFormScreen> {
   final _amountController = TextEditingController();
   final _categoryController = TextEditingController(text: 'Office');
   final _notesController = TextEditingController();
+  final ImagePickerService _imagePicker = ImagePickerService();
   bool _isTaxDeductible = false;
   DateTime _expenseDate = DateTime.now();
+  File? _selectedReceipt;
+  bool _isUploadingReceipt = false;
 
   bool _isEditMode = false;
   bool _isLoading = false;
@@ -50,6 +55,27 @@ class _ExpenseFormScreenState extends ConsumerState<ExpenseFormScreen> {
     if (picked != null) {
       setState(() {
         _expenseDate = picked;
+      });
+    }
+  }
+
+  Future<void> _pickReceipt() async {
+    final file = await _imagePicker.showImageSourceDialog(context);
+    if (file != null) {
+      // Validate image
+      final isValid = await _imagePicker.validateImage(file);
+      if (!isValid && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Invalid image. Please select a valid image file (max 10MB)'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+
+      setState(() {
+        _selectedReceipt = file;
       });
     }
   }
@@ -101,14 +127,53 @@ class _ExpenseFormScreenState extends ConsumerState<ExpenseFormScreen> {
     };
 
     bool success;
+    String? expenseId;
+
     if (_isEditMode) {
+      expenseId = widget.expenseId;
       success = await ref
           .read(expenseProvider.notifier)
-          .updateExpense(widget.expenseId!, data);
+          .updateExpense(expenseId!, data);
     } else {
+      // For new expenses, create first then upload receipt
       success = await ref
           .read(expenseProvider.notifier)
           .createExpense(data);
+
+      if (success) {
+        // Get the newly created expense ID from the state
+        final expenses = ref.read(expenseProvider).expenses;
+        if (expenses.isNotEmpty) {
+          // Find the expense with matching description and date
+          final newExpense = expenses.firstWhere(
+            (e) => e.description == data['description'] &&
+                   e.date.toIso8601String().split('T')[0] == data['date'],
+            orElse: () => expenses.first,
+          );
+          expenseId = newExpense.id;
+        }
+      }
+    }
+
+    // Upload receipt if one was selected
+    if (success && _selectedReceipt != null && expenseId != null) {
+      setState(() => _isUploadingReceipt = true);
+
+      final size = await _imagePicker.getFileSizeInMB(_selectedReceipt!);
+      final uploadSuccess = await ref
+          .read(expenseProvider.notifier)
+          .uploadReceipt(expenseId, _selectedReceipt!.path, size);
+
+      setState(() => _isUploadingReceipt = false);
+
+      if (!uploadSuccess && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Expense saved but receipt upload failed'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
     }
 
     setState(() => _isLoading = false);
@@ -197,6 +262,15 @@ class _ExpenseFormScreenState extends ConsumerState<ExpenseFormScreen> {
                   const Text('Tax Deductible'),
                 ],
               ),
+              const SizedBox(height: 24),
+
+              // Receipt Section
+              const Text(
+                'Receipt (Optional)',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 12),
+              _buildReceiptSection(),
               const SizedBox(height: 32),
 
               // Actions
@@ -344,6 +418,89 @@ class _ExpenseFormScreenState extends ConsumerState<ExpenseFormScreen> {
             ),
           ),
         ),
+      ],
+    );
+  }
+
+  Widget _buildReceiptSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (_selectedReceipt != null) ...[
+          Container(
+            height: 200,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Colors.grey.shade300),
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: Image.file(
+                _selectedReceipt!,
+                fit: BoxFit.cover,
+                width: double.infinity,
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          FutureBuilder<double>(
+            future: _imagePicker.getFileSizeInMB(_selectedReceipt!),
+            builder: (context, snapshot) {
+              if (snapshot.hasData) {
+                return Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'File size: ${snapshot.data!.toStringAsFixed(2)} MB',
+                      style: const TextStyle(fontSize: 12, color: Colors.grey),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.clear, color: Colors.red),
+                      onPressed: () {
+                        setState(() {
+                          _selectedReceipt = null;
+                        });
+                      },
+                      tooltip: 'Remove receipt',
+                    ),
+                  ],
+                );
+              }
+              return const SizedBox.shrink();
+            },
+          ),
+          const SizedBox(height: 8),
+        ],
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            onPressed: _isUploadingReceipt ? null : _pickReceipt,
+            icon: _isUploadingReceipt
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      valueColor: AlwaysStoppedAnimation<Color>(Colors.red),
+                    ),
+                  )
+                : const Icon(Icons.receipt_long),
+            label: Text(_selectedReceipt != null ? 'Change Receipt' : 'Add Receipt'),
+            style: OutlinedButton.styleFrom(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+          ),
+        ),
+        if (_isUploadingReceipt) ...[
+          const SizedBox(height: 8),
+          const Text(
+            'Uploading receipt...',
+            style: TextStyle(fontSize: 12, color: Colors.grey),
+          ),
+        ],
       ],
     );
   }

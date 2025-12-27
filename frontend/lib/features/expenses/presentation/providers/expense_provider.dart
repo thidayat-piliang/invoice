@@ -11,6 +11,8 @@ class Expense {
   final String category;
   final bool isTaxDeductible;
   final String? notes;
+  final String? receiptPath;
+  final double? receiptSize;
   final DateTime date;
   final DateTime createdAt;
 
@@ -22,9 +24,13 @@ class Expense {
     required this.category,
     required this.isTaxDeductible,
     this.notes,
+    this.receiptPath,
+    this.receiptSize,
     required this.date,
     required this.createdAt,
   });
+
+  bool get hasReceipt => receiptPath != null && receiptPath!.isNotEmpty;
 
   factory Expense.fromJson(Map<String, dynamic> json) {
     return Expense(
@@ -35,6 +41,8 @@ class Expense {
       category: json['category'],
       isTaxDeductible: json['is_tax_deductible'] ?? false,
       notes: json['notes'],
+      receiptPath: json['receipt_path'],
+      receiptSize: json['receipt_size']?.toDouble(),
       date: DateTime.parse(json['date']),
       createdAt: DateTime.parse(json['created_at']),
     );
@@ -190,6 +198,36 @@ class ExpenseNotifier extends StateNotifier<ExpenseState> {
       state = state.copyWith(
         isLoading: false,
         error: e.response?.data['error']['message'] ?? 'Failed to delete expense',
+      );
+      return false;
+    } catch (e) {
+      state = state.copyWith(
+        isLoading: false,
+        error: 'An unexpected error occurred',
+      );
+      return false;
+    }
+  }
+
+  Future<bool> uploadReceipt(String id, String filePath, double fileSize) async {
+    state = state.copyWith(isLoading: true, error: null);
+
+    try {
+      // Create multipart file
+      final fileName = filePath.split('/').last;
+      final multipartFile = await MultipartFile.fromFile(
+        filePath,
+        filename: fileName,
+      );
+
+      await _apiClient.uploadExpenseReceipt(id, multipartFile);
+      state = state.copyWith(isLoading: false);
+      await loadExpenses();
+      return true;
+    } on DioException catch (e) {
+      state = state.copyWith(
+        isLoading: false,
+        error: e.response?.data['error']['message'] ?? 'Failed to upload receipt',
       );
       return false;
     } catch (e) {
