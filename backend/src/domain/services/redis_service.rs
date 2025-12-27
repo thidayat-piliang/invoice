@@ -1,5 +1,5 @@
 use redis::{Client, RedisError, AsyncCommands, aio::MultiplexedConnection};
-use serde::{Serialize, Deserialize, de::DeserializeOwned};
+use serde::{Serialize, de::DeserializeOwned};
 
 #[derive(Debug, thiserror::Error)]
 pub enum RedisErrorWrapper {
@@ -51,7 +51,7 @@ impl RedisService {
     ) -> Result<(), RedisErrorWrapper> {
         let mut conn = self.get_async_connection().await?;
         let json = serde_json::to_string(value)?;
-        conn.set_ex(key, json, seconds).await?;
+        conn.set_ex::<_, _, ()>(key, json, seconds).await?;
         Ok(())
     }
 
@@ -74,7 +74,7 @@ impl RedisService {
     /// Delete a key
     pub async fn delete(&self, key: &str) -> Result<(), RedisErrorWrapper> {
         let mut conn = self.get_async_connection().await?;
-        conn.del(key).await?;
+        conn.del::<_, ()>(key).await?;
         Ok(())
     }
 
@@ -95,7 +95,7 @@ impl RedisService {
     /// Set expiration on existing key
     pub async fn expire(&self, key: &str, seconds: u64) -> Result<(), RedisErrorWrapper> {
         let mut conn = self.get_async_connection().await?;
-        conn.expire(key, seconds as i64).await?;
+        conn.expire::<_, ()>(key, seconds as i64).await?;
         Ok(())
     }
 
@@ -111,7 +111,7 @@ impl RedisService {
         let keys = self.keys(pattern).await?;
         if !keys.is_empty() {
             let mut conn = self.get_async_connection().await?;
-            conn.del(&keys).await?;
+            conn.del::<_, ()>(&keys).await?;
         }
         Ok(())
     }
@@ -119,7 +119,7 @@ impl RedisService {
     /// Push to left of list
     pub async fn lpush(&self, key: &str, value: &str) -> Result<(), RedisErrorWrapper> {
         let mut conn = self.get_async_connection().await?;
-        conn.lpush(key, value).await?;
+        conn.lpush::<_, _, ()>(key, value).await?;
         Ok(())
     }
 

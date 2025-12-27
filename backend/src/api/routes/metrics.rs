@@ -53,7 +53,7 @@ async fn get_metrics(State(state): State<MetricsState>) -> Result<Response, Stat
 }
 
 /// Health check endpoint - returns 200 if service is running
-async fn health_check(State(state): State<MetricsState>) -> StatusCode {
+async fn health_check(State(_state): State<MetricsState>) -> StatusCode {
     // Basic health check - just check if we can respond
     StatusCode::OK
 }

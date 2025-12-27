@@ -7,8 +7,8 @@ use std::sync::Arc;
 
 use crate::api::error::ApiError;
 use crate::api::middleware::AuthUser;
-use crate::domain::models::{BusinessAddress, NotificationSettings, InvoiceSettings};
-use crate::application::settings_use_cases::{
+use crate::domain::models::{BusinessAddress, NotificationSettings};
+use crate::application::use_cases::{
     GetBusinessSettingsUseCase, UpdateBusinessSettingsUseCase,
     GetNotificationSettingsUseCase, UpdateNotificationSettingsUseCase,
     GetInvoiceSettingsUseCase, UpdateInvoiceSettingsUseCase,

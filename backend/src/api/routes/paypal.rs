@@ -97,7 +97,7 @@ async fn create_paypal_order(
         .payment_gateway_service
         .create_paypal_order(intent)
         .await
-        .map_err(|e| ApiError::Internal)?;
+        .map_err(|_e| ApiError::Internal)?;
 
     // In production, you would also generate a PayPal checkout URL here
     // For now, return the order ID for client-side integration
@@ -128,7 +128,7 @@ async fn refund_paypal_payment(
         .payment_gateway_service
         .refund_paypal_payment(refund_request)
         .await
-        .map_err(|e| ApiError::Internal)?;
+        .map_err(|_e| ApiError::Internal)?;
 
     Ok(Json(RefundPayPalResponse {
         refund_id: refund.id,

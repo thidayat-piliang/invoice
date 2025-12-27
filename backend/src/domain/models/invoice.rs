@@ -52,7 +52,7 @@ pub struct InvoiceItem {
 }
 
 impl InvoiceItem {
-    pub fn calculate(&mut self) {
+    pub fn _calculate(&mut self) {
         self.tax_amount = (self.quantity * self.unit_price) * self.tax_rate;
         self.total = (self.quantity * self.unit_price) + self.tax_amount;
     }
@@ -101,7 +101,7 @@ pub struct Invoice {
 }
 
 impl Invoice {
-    pub fn calculate_totals(&mut self) {
+    pub fn _calculate_totals(&mut self) {
         self.subtotal = self.items.iter()
             .map(|item| item.quantity * item.unit_price)
             .sum();
@@ -113,11 +113,11 @@ impl Invoice {
         self.total_amount = self.subtotal + self.tax_amount - self.discount_amount;
     }
 
-    pub fn balance_due(&self) -> f64 {
+    pub fn _balance_due(&self) -> f64 {
         self.total_amount - self.amount_paid
     }
 
-    pub fn is_overdue(&self) -> bool {
+    pub fn _is_overdue(&self) -> bool {
         if self.status == InvoiceStatus::Paid || self.status == InvoiceStatus::Cancelled {
             return false;
         }
@@ -126,8 +126,8 @@ impl Invoice {
         today > self.due_date
     }
 
-    pub fn update_status(&mut self) {
-        if self.is_overdue() {
+    pub fn _update_status(&mut self) {
+        if self._is_overdue() {
             self.status = InvoiceStatus::Overdue;
         } else if self.amount_paid > 0.0 && self.amount_paid < self.total_amount {
             self.status = InvoiceStatus::Partial;
@@ -306,14 +306,14 @@ impl FromRow<'_, sqlx::postgres::PgRow> for InvoiceDetailResponse {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SendInvoiceRequest {
+pub struct _SendInvoiceRequest {
     pub email: Option<String>,
     pub subject: Option<String>,
     pub message: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct InvoiceReminder {
+pub struct _InvoiceReminder {
     pub invoice_id: Uuid,
     pub days_overdue: i64,
     pub reminder_type: String, // 'friendly', 'reminder', 'urgent', 'final_notice'

@@ -10,7 +10,7 @@ use thiserror::Error;
 use uuid::Uuid;
 use validator::Validate;
 
-use crate::domain::models::{RegisterRequest, LoginRequest, ForgotPasswordRequest, ResetPasswordRequest, AuthResponse, User, UpdateUser, CreateUser};
+use crate::domain::models::{RegisterRequest, LoginRequest, ForgotPasswordRequest, ResetPasswordRequest, AuthResponse, User, UpdateUser};
 use crate::domain::services::EmailService;
 use crate::infrastructure::repositories::UserRepository;
 use std::sync::Arc;

@@ -6,13 +6,11 @@ use axum::{
 };
 use governor::{
     clock::DefaultClock,
-    middleware::RateLimitingMiddleware,
-    state::{InMemoryState, keyed::DefaultKeyedStateStore},
+    state::{keyed::DefaultKeyedStateStore},
     Quota, RateLimiter,
 };
 use nonzero_ext::nonzero;
 use std::sync::Arc;
-use std::time::Duration;
 
 use crate::domain::services::RedisService;
 

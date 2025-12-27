@@ -1,6 +1,5 @@
 use std::sync::Arc;
 use uuid::Uuid;
-use serde_json::Value;
 
 use crate::infrastructure::repositories::ClientRepository;
 use crate::domain::models::{Client, ClientResponse, ClientStats, CreateClient, UpdateClient};

@@ -9,7 +9,7 @@ use uuid::Uuid;
 
 use crate::api::error::ApiError;
 use crate::api::middleware::auth::AuthUser;
-use crate::application::tax_use_cases::{
+use crate::application::use_cases::{
     CreateTaxSettingUseCase, GetOrganizationTaxSettingsUseCase, GetDefaultTaxUseCase,
     UpdateTaxSettingUseCase, DeleteTaxSettingUseCase, CalculateTaxUseCase,
     GetTaxSummaryUseCase, ValidateTaxIdUseCase,
@@ -223,7 +223,7 @@ struct ValidateTaxIdResponse {
 }
 
 async fn validate_tax_id(
-    auth_user: AuthUser,
+    _auth_user: AuthUser,
     State(state): State<TaxState>,
     Json(payload): Json<ValidateTaxIdRequest>,
 ) -> Result<Json<ValidateTaxIdResponse>, ApiError> {

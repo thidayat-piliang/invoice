@@ -1,6 +1,5 @@
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
-use std::sync::Arc;
 
 #[derive(Debug, Error)]
 pub enum NotificationError {

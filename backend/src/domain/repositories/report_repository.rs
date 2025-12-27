@@ -3,8 +3,6 @@ use uuid::Uuid;
 use chrono::NaiveDate;
 use serde::{Serialize, Deserialize};
 
-use crate::domain::models::InvoiceStatus;
-
 #[async_trait]
 pub trait ReportRepository: Send + Sync {
     /// Get dashboard overview statistics

@@ -4,14 +4,12 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
-use serde::Deserialize;
 use std::sync::Arc;
 use uuid::Uuid;
-use chrono::{DateTime, Utc};
 
 use crate::api::error::ApiError;
 use crate::api::middleware::AuthUser;
-use crate::domain::models::{CreatePayment, PaymentListFilter, RefundRequest, PaymentStatus, PaymentMethod};
+use crate::domain::models::{CreatePayment, PaymentListFilter, RefundRequest};
 use crate::application::use_cases::{
     CreatePaymentUseCase, GetPaymentUseCase, ListPaymentsUseCase,
     RefundPaymentUseCase, GetPaymentStatsUseCase, GetPaymentMethodsUseCase,

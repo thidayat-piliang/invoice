@@ -11,7 +11,7 @@ use axum::{
 };
 use std::sync::Arc;
 use tower_http::{
-    cors::{Any, CorsLayer},
+    cors::CorsLayer,
     trace::TraceLayer,
     set_header::SetResponseHeaderLayer,
     limit::RequestBodyLimitLayer,
@@ -24,7 +24,7 @@ use crate::api::routes::{auth, invoices, reports, settings, clients, payments, e
 use crate::domain::services::{InvoiceService, AuthService, EmailService, EmailConfig, PdfService, ReportService, SettingsService, ClientService, PaymentService, ExpenseService, RedisService, MetricsService, FileService, NotificationService, TaxService, PaymentGatewayService, MonitoringService, EmailQueueService};
 use crate::application::use_cases::*;
 use crate::infrastructure::repositories::{InvoiceRepository, ClientRepository, UserRepository, ReportRepositoryImpl, PaymentRepository, ExpenseRepository, TaxRepositoryImpl};
-use crate::domain::repositories::TaxRepository;
+use crate::domain::repositories::tax_repository::TaxRepository;
 
 #[tokio::main]
 async fn main() {
@@ -144,7 +144,7 @@ async fn main() {
         from_name: std::env::var("FROM_NAME").unwrap_or_else(|_| "FlashBill".to_string()),
     }));
 
-    let notification_service = Arc::new(NotificationService::new().expect("Failed to initialize notification service"));
+    let _notification_service = Arc::new(NotificationService::new().expect("Failed to initialize notification service"));
     tracing::info!("✅ Notification service initialized");
 
     // Initialize monitoring service
@@ -152,7 +152,7 @@ async fn main() {
     tracing::info!("✅ Monitoring service initialized");
 
     // Initialize email queue service (if Redis available)
-    let email_queue_service = if let Some(redis) = &redis_service {
+    let _email_queue_service = if let Some(redis) = &redis_service {
         let queue = Arc::new(EmailQueueService::new(redis.clone(), email_service.clone()));
         tracing::info!("✅ Email queue service initialized");
         Some(queue)

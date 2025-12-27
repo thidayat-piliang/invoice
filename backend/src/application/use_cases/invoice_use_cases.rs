@@ -2,7 +2,7 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::application::dto::invoice_dto::*;
-use crate::domain::models::{CreateInvoice, UpdateInvoice, CreatePayment, InvoiceListFilter, SendInvoiceRequest};
+use crate::domain::models::{CreateInvoice, UpdateInvoice, CreatePayment, InvoiceListFilter};
 use crate::domain::services::{InvoiceService, InvoiceError};
 
 /// Use case: Create a new invoice

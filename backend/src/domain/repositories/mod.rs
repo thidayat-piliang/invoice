@@ -4,9 +4,3 @@
 pub mod report_repository;
 pub mod tax_repository;
 
-pub use report_repository::*;
-pub use tax_repository::*;
-
-pub trait UserRepository {}
-pub trait InvoiceRepository {}
-pub trait ClientRepository {}

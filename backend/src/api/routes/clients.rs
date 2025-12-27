@@ -4,7 +4,6 @@ use axum::{
     routing::{get, post, put, delete},
     Json, Router,
 };
-use serde::Deserialize;
 use std::sync::Arc;
 use uuid::Uuid;
 

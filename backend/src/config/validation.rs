@@ -93,7 +93,7 @@ pub fn validate_env() -> Result<ValidationResult, ConfigError> {
     // Validate PORT if set
     if let Ok(port) = env::var("PORT") {
         if let Ok(port_num) = port.parse::<u16>() {
-            if port_num == 0 || port_num > 65535 {
+            if port_num == 0 {
                 result.invalid_vars.push((
                     "PORT".to_string(),
                     "Port must be between 1 and 65535".to_string(),
@@ -110,7 +110,7 @@ pub fn validate_env() -> Result<ValidationResult, ConfigError> {
     // Validate SMTP_PORT if set
     if let Ok(port) = env::var("SMTP_PORT") {
         if let Ok(port_num) = port.parse::<u16>() {
-            if port_num == 0 || port_num > 65535 {
+            if port_num == 0 {
                 result.invalid_vars.push((
                     "SMTP_PORT".to_string(),
                     "SMTP port must be between 1 and 65535".to_string(),

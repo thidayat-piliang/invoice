@@ -1,12 +1,11 @@
 use sqlx::{PgPool, Postgres, QueryBuilder, Row};
 use uuid::Uuid;
 use chrono::{DateTime, Utc, NaiveDate, Datelike};
-use rand::Rng;
 use std::sync::Arc;
 
 use crate::domain::models::{
     Invoice, InvoiceItem, InvoiceStatus, InvoiceResponse, InvoiceDetailResponse,
-    CreateInvoice, UpdateInvoice, InvoiceListFilter, CreatePayment, PaymentMethod
+    CreateInvoice, UpdateInvoice, InvoiceListFilter, CreatePayment
 };
 use crate::domain::services::TaxService;
 

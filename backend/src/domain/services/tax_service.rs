@@ -2,7 +2,7 @@ use crate::domain::models::{
     TaxSetting, CreateTaxSetting, UpdateTaxSetting, TaxCalculation, TaxSummary,
     TaxBreakdownItem, validate_tax_rate, validate_tax_id
 };
-use crate::domain::repositories::TaxRepository;
+use crate::domain::repositories::tax_repository::TaxRepository;
 use std::sync::Arc;
 use uuid::Uuid;
 use thiserror::Error;
@@ -194,7 +194,7 @@ impl TaxService {
     }
 
     /// Calculate tax for a line item
-    pub async fn calculate_line_tax(
+    pub async fn _calculate_line_tax(
         &self,
         organization_id: Uuid,
         quantity: f64,
@@ -295,7 +295,7 @@ impl TaxService {
     }
 
     /// Normalize tax ID
-    pub fn normalize_tax_id(&self, tax_id: &str) -> String {
+    pub fn _normalize_tax_id(&self, tax_id: &str) -> String {
         crate::domain::models::normalize_tax_id(tax_id)
     }
 }

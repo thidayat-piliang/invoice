@@ -1,5 +1,5 @@
 use axum::{
-    body::{Body, Bytes},
+    body::Body,
     http::{Request, StatusCode},
     middleware::Next,
     response::Response,

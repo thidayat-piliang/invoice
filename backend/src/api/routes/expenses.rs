@@ -4,14 +4,12 @@ use axum::{
     routing::{get, post, put, delete},
     Json, Router,
 };
-use serde::Deserialize;
 use std::sync::Arc;
 use uuid::Uuid;
-use chrono::NaiveDate;
 
 use crate::api::error::ApiError;
 use crate::api::middleware::AuthUser;
-use crate::domain::models::{CreateExpense, UpdateExpense, ExpenseListFilter, ExpenseCategory};
+use crate::domain::models::{CreateExpense, UpdateExpense, ExpenseListFilter};
 use crate::application::use_cases::{
     CreateExpenseUseCase, GetExpenseUseCase, ListExpensesUseCase,
     UpdateExpenseUseCase, DeleteExpenseUseCase, GetExpenseStatsUseCase,

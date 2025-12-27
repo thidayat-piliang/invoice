@@ -1,7 +1,7 @@
 use lettre::{
-    message::{Mailbox, MultiPart, SinglePart, header::{ContentType, ContentDisposition, Header}},
+    message::{Mailbox, MultiPart, SinglePart, header::{ContentType, ContentDisposition}},
     transport::smtp::{authentication::Credentials, client::{Tls, TlsParameters}},
-    Address, Message, SmtpTransport, Transport,
+    Message, SmtpTransport, Transport,
 };
 use thiserror::Error;
 

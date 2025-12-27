@@ -69,7 +69,7 @@ async fn upload_file(
             .file_service
             .upload_file(&file_data, &file_name, &content_type)
             .await
-            .map_err(|e| ApiError::Internal)?;
+            .map_err(|_e| ApiError::Internal)?;
 
         uploaded_file = Some(result);
     }

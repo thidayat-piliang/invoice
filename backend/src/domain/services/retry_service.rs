@@ -75,8 +75,8 @@ impl RetryConfig {
         // Add jitter (random variation) to prevent thundering herd
         if self.jitter {
             use rand::Rng;
-            let mut rng = rand::thread_rng();
-            let jitter_factor: f64 = rng.gen_range(0.8..1.2);
+            let mut rng = rand::rng();
+            let jitter_factor: f64 = rng.random_range(0.8..1.2);
             delay_ms = (delay_ms as f64 * jitter_factor) as u64;
         }
 
@@ -105,14 +105,10 @@ impl RetryService {
         Fut: std::future::Future<Output = Result<T, E>>,
         E: std::fmt::Display,
     {
-        let mut last_error = None;
-
         for attempt in 1..=self.config.max_retries {
             match operation(attempt).await {
                 Ok(result) => return Ok(result),
                 Err(e) => {
-                    last_error = Some(e.to_string());
-
                     // If this was the last attempt, return error
                     if attempt == self.config.max_retries {
                         break;
@@ -153,8 +149,6 @@ impl RetryService {
         E: std::fmt::Display,
         Cond: Fn(&E) -> bool,
     {
-        let mut last_error = None;
-
         for attempt in 1..=self.config.max_retries {
             match operation(attempt).await {
                 Ok(result) => return Ok(result),
@@ -163,8 +157,6 @@ impl RetryService {
                     if !should_retry(&e) {
                         return Err(RetryError::MaxRetriesExceeded(attempt));
                     }
-
-                    last_error = Some(e.to_string());
 
                     if attempt == self.config.max_retries {
                         break;
@@ -188,25 +180,6 @@ impl RetryService {
 
     /// Check if an error is worth retrying
     fn is_retryable_error(&self, error: &str) -> bool {
-        let retryable_patterns = [
-            "connection",
-            "timeout",
-            "network",
-            "dns",
-            "refused",
-            "reset",
-            "unavailable",
-            "busy",
-            "deadlock",
-            "lock",
-            "rate limit",
-            "429",
-            "500",
-            "502",
-            "503",
-            "504",
-        ];
-
         error.to_lowercase().contains("connection")
             || error.to_lowercase().contains("timeout")
             || error.to_lowercase().contains("network")

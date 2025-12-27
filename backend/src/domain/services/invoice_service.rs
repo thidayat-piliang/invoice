@@ -317,7 +317,7 @@ impl InvoiceService {
         }
 
         // Determine reminder type based on days overdue
-        let (reminder_type, subject, message) = if days_overdue == 0 {
+        let (_reminder_type, subject, message) = if days_overdue == 0 {
             ("friendly", "Friendly Reminder: Invoice Due Today", "Just a friendly reminder that your invoice is due today.")
         } else if days_overdue <= 7 {
             ("reminder", "Payment Reminder", "This is a reminder that your invoice is overdue.")

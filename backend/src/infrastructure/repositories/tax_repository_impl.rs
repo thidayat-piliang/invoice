@@ -2,8 +2,7 @@ use async_trait::async_trait;
 use uuid::Uuid;
 use sqlx::{PgPool, Row};
 use crate::domain::models::TaxSetting;
-use crate::domain::repositories::TaxRepository;
-use chrono::{DateTime, Utc};
+use crate::domain::repositories::tax_repository::TaxRepository;
 
 pub struct TaxRepositoryImpl {
     pool: PgPool,

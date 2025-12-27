@@ -16,7 +16,7 @@ use uuid::Uuid;
 use crate::domain::services::AuthService;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct AuthClaims {
+pub struct _AuthClaims {
     pub sub: String,
     pub email: String,
     pub exp: usize,
@@ -63,8 +63,8 @@ impl IntoResponse for AuthExtractorError {
 #[derive(Debug, Clone)]
 pub struct AuthUser {
     pub user_id: Uuid,
-    pub email: String,
-    pub tier: String,
+    pub _email: String,
+    pub _tier: String,
 }
 
 impl<S> FromRequestParts<S> for AuthUser
@@ -98,8 +98,8 @@ where
 
         Ok(AuthUser {
             user_id,
-            email: claims.email,
-            tier: claims.tier,
+            _email: claims.email,
+            _tier: claims.tier,
         })
     }
 }

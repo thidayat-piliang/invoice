@@ -5,7 +5,7 @@ use chrono::NaiveDate;
 
 use crate::domain::repositories::report_repository::{
     ReportRepository, OverviewStats, IncomeReport, ExpensesReport, TaxReport, AgingReport,
-    IncomeByMonth, IncomeByClient, ExpensesByCategory, ExpensesByMonth, TaxByState,
+    IncomeByMonth, IncomeByClient, TaxByState,
 };
 
 #[derive(Clone)]
