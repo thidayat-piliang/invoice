@@ -23,6 +23,11 @@ struct InvoiceState {
     send_invoice_uc: Arc<SendInvoiceUseCase>,
     get_pdf_uc: Arc<GetInvoicePdfUseCase>,
     send_reminder_uc: Arc<SendReminderUseCase>,
+    send_invoice_whatsapp_uc: Arc<SendInvoiceWhatsappUseCase>,
+    mark_invoice_viewed_uc: Arc<MarkInvoiceViewedUseCase>,
+    send_payment_confirmation_uc: Arc<SendPaymentConfirmationUseCase>,
+    add_discussion_message_uc: Arc<AddDiscussionMessageUseCase>,
+    get_discussion_messages_uc: Arc<GetDiscussionMessagesUseCase>,
 }
 
 pub fn create_router(
@@ -35,6 +40,11 @@ pub fn create_router(
     send_invoice_uc: Arc<SendInvoiceUseCase>,
     get_pdf_uc: Arc<GetInvoicePdfUseCase>,
     send_reminder_uc: Arc<SendReminderUseCase>,
+    send_invoice_whatsapp_uc: Arc<SendInvoiceWhatsappUseCase>,
+    mark_invoice_viewed_uc: Arc<MarkInvoiceViewedUseCase>,
+    send_payment_confirmation_uc: Arc<SendPaymentConfirmationUseCase>,
+    add_discussion_message_uc: Arc<AddDiscussionMessageUseCase>,
+    get_discussion_messages_uc: Arc<GetDiscussionMessagesUseCase>,
 ) -> Router {
     let state = InvoiceState {
         create_invoice_uc,
@@ -46,6 +56,11 @@ pub fn create_router(
         send_invoice_uc,
         get_pdf_uc,
         send_reminder_uc,
+        send_invoice_whatsapp_uc,
+        mark_invoice_viewed_uc,
+        send_payment_confirmation_uc,
+        add_discussion_message_uc,
+        get_discussion_messages_uc,
     };
 
     Router::new()
@@ -55,9 +70,14 @@ pub fn create_router(
         .route("/{id}", put(update_invoice))
         .route("/{id}", delete(delete_invoice))
         .route("/{id}/send", post(send_invoice))
+        .route("/{id}/send-whatsapp", post(send_invoice_whatsapp))
         .route("/{id}/remind", post(send_reminder))
         .route("/{id}/pdf", get(get_pdf))
         .route("/{id}/pay", post(record_payment))
+        .route("/{id}/view", post(mark_invoice_viewed))
+        .route("/{id}/send-confirmation", post(send_payment_confirmation))
+        .route("/{id}/discussion", get(get_discussion_messages))
+        .route("/{id}/discussion", post(add_discussion_message))
         .with_state(state)
 }
 
@@ -179,4 +199,69 @@ async fn record_payment(
         .await?;
 
     Ok((StatusCode::CREATED, Json(response)))
+}
+
+async fn send_invoice_whatsapp(
+    auth_user: AuthUser,
+    State(state): State<InvoiceState>,
+    Path(invoice_id): Path<Uuid>,
+) -> Result<StatusCode, ApiError> {
+    state
+        .send_invoice_whatsapp_uc
+        .execute(auth_user.user_id, invoice_id)
+        .await?;
+
+    Ok(StatusCode::OK)
+}
+
+async fn mark_invoice_viewed(
+    State(state): State<InvoiceState>,
+    Path(invoice_id): Path<Uuid>,
+) -> Result<Json<InvoiceDto>, ApiError> {
+    let response = state
+        .mark_invoice_viewed_uc
+        .execute(invoice_id)
+        .await?;
+
+    Ok(Json(response))
+}
+
+async fn send_payment_confirmation(
+    auth_user: AuthUser,
+    State(state): State<InvoiceState>,
+    Path(invoice_id): Path<Uuid>,
+) -> Result<StatusCode, ApiError> {
+    state
+        .send_payment_confirmation_uc
+        .execute(auth_user.user_id, invoice_id)
+        .await?;
+
+    Ok(StatusCode::OK)
+}
+
+async fn add_discussion_message(
+    auth_user: AuthUser,
+    State(state): State<InvoiceState>,
+    Path(invoice_id): Path<Uuid>,
+    Json(payload): Json<AddDiscussionMessageCommand>,
+) -> Result<(StatusCode, Json<DiscussionMessageDto>), ApiError> {
+    let response = state
+        .add_discussion_message_uc
+        .execute_as_seller(auth_user.user_id, invoice_id, payload)
+        .await?;
+
+    Ok((StatusCode::CREATED, Json(response)))
+}
+
+async fn get_discussion_messages(
+    auth_user: AuthUser,
+    State(state): State<InvoiceState>,
+    Path(invoice_id): Path<Uuid>,
+) -> Result<Json<DiscussionResponseDto>, ApiError> {
+    let response = state
+        .get_discussion_messages_uc
+        .execute(auth_user.user_id, invoice_id)
+        .await?;
+
+    Ok(Json(response))
 }

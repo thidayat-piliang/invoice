@@ -2,6 +2,53 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:dio/dio.dart';
 import '../../../../shared/services/api_client.dart';
 
+// Discussion Message Model
+class DiscussionMessage {
+  final String id;
+  final String invoiceId;
+  final String senderType; // 'seller' or 'buyer'
+  final String message;
+  final DateTime createdAt;
+
+  DiscussionMessage({
+    required this.id,
+    required this.invoiceId,
+    required this.senderType,
+    required this.message,
+    required this.createdAt,
+  });
+
+  factory DiscussionMessage.fromJson(Map<String, dynamic> json) {
+    return DiscussionMessage(
+      id: json['id'],
+      invoiceId: json['invoice_id'],
+      senderType: json['sender_type'],
+      message: json['message'],
+      createdAt: DateTime.parse(json['created_at']),
+    );
+  }
+
+  bool get isSeller => senderType.toLowerCase() == 'seller';
+  bool get isBuyer => senderType.toLowerCase() == 'buyer';
+}
+
+// Discussion Response Model
+class DiscussionResponse {
+  final List<DiscussionMessage> messages;
+
+  DiscussionResponse({required this.messages});
+
+  factory DiscussionResponse.fromJson(Map<String, dynamic> json) {
+    final messagesList = json['messages'] as List;
+    return DiscussionResponse(
+      messages: messagesList.map((e) => DiscussionMessage.fromJson(e)).toList(),
+    );
+  }
+
+  int get count => messages.length;
+  bool get isEmpty => messages.isEmpty;
+}
+
 // Invoice Item Model
 class InvoiceItem {
   final String description;
@@ -45,7 +92,14 @@ class Invoice {
   final DateTime dueDate;
   final double totalAmount;
   final double balanceDue;
+  final double amountPaid;
   final bool isOverdue;
+  final DateTime? viewedAt;
+  final DateTime? sentAt;
+  final String? guestPaymentToken;
+  final bool allowPartialPayment;
+  final double? minPaymentAmount;
+  final int partialPaymentCount;
 
   Invoice({
     required this.id,
@@ -56,7 +110,14 @@ class Invoice {
     required this.dueDate,
     required this.totalAmount,
     required this.balanceDue,
+    required this.amountPaid,
     required this.isOverdue,
+    this.viewedAt,
+    this.sentAt,
+    this.guestPaymentToken,
+    this.allowPartialPayment = true,
+    this.minPaymentAmount,
+    this.partialPaymentCount = 0,
   });
 
   factory Invoice.fromJson(Map<String, dynamic> json) {
@@ -69,9 +130,20 @@ class Invoice {
       dueDate: DateTime.parse(json['due_date']),
       totalAmount: json['total_amount']?.toDouble() ?? 0.0,
       balanceDue: json['balance_due']?.toDouble() ?? 0.0,
+      amountPaid: json['amount_paid']?.toDouble() ?? 0.0,
       isOverdue: json['is_overdue'] ?? false,
+      viewedAt: json['viewed_at'] != null ? DateTime.parse(json['viewed_at']) : null,
+      sentAt: json['sent_at'] != null ? DateTime.parse(json['sent_at']) : null,
+      guestPaymentToken: json['guest_payment_token'],
+      allowPartialPayment: json['allow_partial_payment'] ?? true,
+      minPaymentAmount: json['min_payment_amount']?.toDouble(),
+      partialPaymentCount: json['partial_payment_count'] ?? 0,
     );
   }
+
+  bool get isViewed => viewedAt != null;
+  bool get hasGuestLink => guestPaymentToken != null;
+  bool get isPartial => status.toLowerCase() == 'partial';
 }
 
 // Invoice Detail Model
@@ -94,6 +166,12 @@ class InvoiceDetail {
   final List<InvoiceItem> items;
   final String? notes;
   final String? terms;
+  final DateTime? viewedAt;
+  final DateTime? sentAt;
+  final String? guestPaymentToken;
+  final bool allowPartialPayment;
+  final double? minPaymentAmount;
+  final int partialPaymentCount;
 
   InvoiceDetail({
     required this.id,
@@ -114,6 +192,12 @@ class InvoiceDetail {
     required this.items,
     this.notes,
     this.terms,
+    this.viewedAt,
+    this.sentAt,
+    this.guestPaymentToken,
+    this.allowPartialPayment = true,
+    this.minPaymentAmount,
+    this.partialPaymentCount = 0,
   });
 
   factory InvoiceDetail.fromJson(Map<String, dynamic> json) {
@@ -136,8 +220,18 @@ class InvoiceDetail {
       items: (json['items'] as List).map((e) => InvoiceItem.fromJson(e)).toList(),
       notes: json['notes'],
       terms: json['terms'],
+      viewedAt: json['viewed_at'] != null ? DateTime.parse(json['viewed_at']) : null,
+      sentAt: json['sent_at'] != null ? DateTime.parse(json['sent_at']) : null,
+      guestPaymentToken: json['guest_payment_token'],
+      allowPartialPayment: json['allow_partial_payment'] ?? true,
+      minPaymentAmount: json['min_payment_amount']?.toDouble(),
+      partialPaymentCount: json['partial_payment_count'] ?? 0,
     );
   }
+
+  bool get isViewed => viewedAt != null;
+  bool get isPartial => status.toLowerCase() == 'partial';
+  bool get canAcceptPartialPayment => allowPartialPayment && balanceDue > 0;
 }
 
 // Invoice State
@@ -335,6 +429,51 @@ class InvoiceNotifier extends StateNotifier<InvoiceState> {
     try {
       final response = await _apiClient.getInvoicePdf(id);
       return response.data as List<int>;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  Future<bool> sendInvoiceWhatsapp(String id) async {
+    try {
+      await _apiClient.sendInvoiceWhatsapp(id);
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  Future<bool> markInvoiceViewed(String id) async {
+    try {
+      await _apiClient.markInvoiceViewed(id);
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  Future<bool> sendPaymentConfirmation(String id, Map<String, dynamic> data) async {
+    try {
+      await _apiClient.sendPaymentConfirmation(id, data);
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  Future<DiscussionResponse?> getDiscussionMessages(String id) async {
+    try {
+      final response = await _apiClient.getDiscussionMessages(id);
+      return DiscussionResponse.fromJson(response.data);
+    } catch (e) {
+      return null;
+    }
+  }
+
+  Future<DiscussionMessage?> addDiscussionMessage(String id, String message) async {
+    try {
+      final response = await _apiClient.addDiscussionMessage(id, {'message': message});
+      return DiscussionMessage.fromJson(response.data);
     } catch (e) {
       return null;
     }

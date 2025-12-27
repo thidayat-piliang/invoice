@@ -69,10 +69,12 @@ impl UpdateBusinessSettingsUseCase {
 
 // GetTaxSettingsUseCase
 #[derive(Clone)]
+#[allow(dead_code)]
 pub struct GetTaxSettingsUseCase {
     settings_service: Arc<SettingsService>,
 }
 
+#[allow(dead_code)]
 impl GetTaxSettingsUseCase {
     pub fn new(settings_service: Arc<SettingsService>) -> Self {
         Self { settings_service }
@@ -85,10 +87,12 @@ impl GetTaxSettingsUseCase {
 
 // UpdateTaxSettingsUseCase
 #[derive(Clone)]
+#[allow(dead_code)]
 pub struct UpdateTaxSettingsUseCase {
     settings_service: Arc<SettingsService>,
 }
 
+#[allow(dead_code)]
 impl UpdateTaxSettingsUseCase {
     pub fn new(settings_service: Arc<SettingsService>) -> Self {
         Self { settings_service }

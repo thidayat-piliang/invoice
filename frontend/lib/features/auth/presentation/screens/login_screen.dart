@@ -162,6 +162,37 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       ),
                     ],
                   ),
+                  const SizedBox(height: 16),
+
+                  // Guest Access
+                  const Divider(height: 24),
+                  const Text(
+                    'Guest Access',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.grey,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  OutlinedButton.icon(
+                    onPressed: () => context.go('/guest/history'),
+                    icon: const Icon(Icons.history),
+                    label: const Text('View Payment History'),
+                    style: OutlinedButton.styleFrom(
+                      minimumSize: const Size(double.infinity, 48),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Use this if you received a payment link via email or WhatsApp',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.grey,
+                    ),
+                  ),
                 ],
               ),
             ),

@@ -89,6 +89,7 @@ pub struct VerificationResultDto {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub struct PasswordResetResultDto {
     pub success: bool,
     pub message: String,

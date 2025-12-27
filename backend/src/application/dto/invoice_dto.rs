@@ -16,6 +16,8 @@ pub struct CreateInvoiceCommand {
     pub discount_amount: Option<f64>,
     pub tax_included: bool,
     pub send_immediately: bool,
+    pub allow_partial_payment: Option<bool>,
+    pub min_payment_amount: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -36,6 +38,8 @@ pub struct UpdateInvoiceCommand {
     pub terms: Option<String>,
     pub discount_amount: Option<f64>,
     pub tax_included: Option<bool>,
+    pub allow_partial_payment: Option<bool>,
+    pub min_payment_amount: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -92,9 +96,16 @@ pub struct InvoiceDto {
     pub pdf_url: Option<String>,
     pub receipt_image_url: Option<String>,
     pub sent_at: Option<DateTime<Utc>>,
+    pub viewed_at: Option<DateTime<Utc>>,
     pub paid_at: Option<DateTime<Utc>>,
     pub reminder_sent_count: i32,
     pub last_reminder_sent: Option<DateTime<Utc>>,
+    pub notification_sent_at: Option<DateTime<Utc>>,
+    pub whatsapp_sent_at: Option<DateTime<Utc>>,
+    pub guest_payment_token: Option<String>,
+    pub allow_partial_payment: bool,
+    pub min_payment_amount: Option<f64>,
+    pub partial_payment_count: i32,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -135,4 +146,73 @@ pub struct PaymentRecordedDto {
     pub new_balance: f64,
     pub status: InvoiceStatus,
     pub message: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SendInvoiceResponse {
+    pub success: bool,
+    pub email_sent: bool,
+    pub whatsapp_sent: bool,
+    pub guest_payment_token: Option<String>,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InvoiceReadStatusDto {
+    pub id: Uuid,
+    pub invoice_number: String,
+    pub status: InvoiceStatus,
+    pub sent_at: Option<DateTime<Utc>>,
+    pub viewed_at: Option<DateTime<Utc>>,
+    pub read_status: String,
+    pub days_to_read: Option<i64>,
+    pub client_name: String,
+    pub client_email: Option<String>,
+    pub client_phone: Option<String>,
+    pub notification_sent_at: Option<DateTime<Utc>>,
+    pub whatsapp_sent_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GuestInvoiceInfoDto {
+    pub invoice_number: String,
+    pub total_amount: f64,
+    pub due_date: NaiveDate,
+    pub client_name: String,
+    pub client_email: Option<String>,
+    pub client_phone: Option<String>,
+    pub guest_payment_token: String,
+    pub seller_company_name: Option<String>,
+    pub seller_email: String,
+    pub seller_phone: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InvoiceNotificationDto {
+    pub invoice_id: Uuid,
+    pub invoice_number: String,
+    pub email_sent: bool,
+    pub whatsapp_sent: bool,
+    pub notification_sent_at: Option<DateTime<Utc>>,
+    pub whatsapp_sent_at: Option<DateTime<Utc>>,
+}
+
+// Discussion DTOs
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AddDiscussionMessageCommand {
+    pub message: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DiscussionMessageDto {
+    pub id: Uuid,
+    pub invoice_id: Uuid,
+    pub sender_type: String,
+    pub message: String,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DiscussionResponseDto {
+    pub messages: Vec<DiscussionMessageDto>,
 }

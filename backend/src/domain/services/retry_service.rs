@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use std::time::Duration;
 use tokio::time::sleep;
 use thiserror::Error;
@@ -211,16 +213,12 @@ impl RetryService {
     {
         use tokio::time::timeout;
 
-        let mut last_error = None;
-
         for attempt in 1..=self.config.max_retries {
             let result = timeout(timeout_duration, operation(attempt)).await;
 
             match result {
                 Ok(Ok(value)) => return Ok(value),
                 Ok(Err(e)) => {
-                    last_error = Some(e.to_string());
-
                     if attempt == self.config.max_retries {
                         break;
                     }
@@ -240,8 +238,6 @@ impl RetryService {
                     sleep(delay).await;
                 }
                 Err(_timeout) => {
-                    last_error = Some("Operation timed out".to_string());
-
                     if attempt == self.config.max_retries {
                         break;
                     }

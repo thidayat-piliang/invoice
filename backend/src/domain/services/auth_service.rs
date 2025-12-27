@@ -166,6 +166,7 @@ impl AuthService {
         (token, expires)
     }
 
+    #[allow(dead_code)]
     pub fn create_token_hash(&self, token: &str) -> Result<String, AuthError> {
         let salt = SaltString::generate(&mut OsRng);
         let argon2 = Argon2::default();
@@ -176,6 +177,7 @@ impl AuthService {
             .map_err(|_| AuthError::HashingFailed)
     }
 
+    #[allow(dead_code)]
     pub fn verify_token_hash(&self, token: &str, hash: &str) -> Result<bool, AuthError> {
         let parsed_hash = PasswordHash::new(hash).map_err(|_| AuthError::HashingFailed)?;
         let argon2 = Argon2::default();

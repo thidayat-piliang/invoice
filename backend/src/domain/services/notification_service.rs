@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -134,7 +136,7 @@ impl NotificationService {
         title: &str,
         body: &str,
         notification_type: NotificationType,
-        data: Option<serde_json::Value>,
+        _data: Option<serde_json::Value>,
     ) -> Result<(), NotificationError> {
         // Store notification in database for in-app display
         // This would typically be stored in a notifications table

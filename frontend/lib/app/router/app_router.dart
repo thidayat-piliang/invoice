@@ -10,6 +10,9 @@ import '../../features/invoices/presentation/screens/invoice_list_screen.dart';
 import '../../features/invoices/presentation/screens/create_invoice_screen.dart';
 import '../../features/invoices/presentation/screens/invoice_detail_screen.dart';
 import '../../features/invoices/presentation/screens/pdf_preview_screen.dart';
+import '../../features/invoices/presentation/screens/send_invoice_screen.dart';
+import '../../features/guest/presentation/screens/guest_checkout_screen.dart';
+import '../../features/guest/presentation/screens/guest_history_screen.dart';
 import '../../features/clients/presentation/screens/client_list_screen.dart';
 import '../../features/clients/presentation/screens/client_form_screen.dart';
 import '../../features/clients/presentation/screens/client_detail_screen.dart';
@@ -82,6 +85,13 @@ final _shellRoutes = [
             builder: (context, state) {
               final invoiceId = state.pathParameters['id']!;
               return InvoiceDetailScreen(invoiceId: invoiceId);
+            },
+          ),
+          GoRoute(
+            path: 'send/:id',
+            builder: (context, state) {
+              final invoiceId = state.pathParameters['id']!;
+              return SendInvoiceScreen(invoiceId: invoiceId);
             },
           ),
           GoRoute(
@@ -217,6 +227,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       final authState = ref.read(authProvider);
       final isAuthenticated = authState.isAuthenticated;
 
+      // Allow guest routes without authentication
+      if (state.location.startsWith('/guest') || state.location.startsWith('/auth')) {
+        return null;
+      }
+
       if (isAuthenticated && state.location.startsWith('/auth')) {
         return '/dashboard';
       } else if (!isAuthenticated && !state.location.startsWith('/auth')) {
@@ -237,6 +252,19 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/auth/forgot-password',
         builder: (context, state) => const ForgotPasswordScreen(),
+      ),
+
+      // Guest routes (no authentication required)
+      GoRoute(
+        path: '/guest/checkout/:token',
+        builder: (context, state) {
+          final token = state.pathParameters['token']!;
+          return GuestCheckoutScreen(token: token);
+        },
+      ),
+      GoRoute(
+        path: '/guest/history',
+        builder: (context, state) => const GuestHistoryScreen(),
       ),
 
       // Main app with bottom navigation

@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use axum::{
     http::StatusCode,
     response::{IntoResponse, Response},
@@ -110,6 +112,14 @@ impl From<crate::domain::services::InvoiceError> for ApiError {
                 tracing::error!("Email error: {}", msg);
                 ApiError::Internal
             }
+            crate::domain::services::InvoiceError::WhatsAppError(msg) => {
+                tracing::error!("WhatsApp error: {}", msg);
+                ApiError::Internal
+            }
+            crate::domain::services::InvoiceError::NotificationError(msg) => {
+                tracing::error!("Notification error: {}", msg);
+                ApiError::Internal
+            }
         }
     }
 }
@@ -171,6 +181,20 @@ impl From<crate::domain::services::TaxError> for ApiError {
             crate::domain::services::TaxError::DefaultAlreadyExists => ApiError::BadRequest("Default tax already exists".to_string()),
             crate::domain::services::TaxError::DatabaseError(msg) => ApiError::Database(msg),
             crate::domain::services::TaxError::Validation(msg) => ApiError::Validation(msg),
+        }
+    }
+}
+
+impl From<crate::domain::services::payment_gateway_service::PaymentGatewayError> for ApiError {
+    fn from(err: crate::domain::services::payment_gateway_service::PaymentGatewayError) -> Self {
+        match err {
+            crate::domain::services::payment_gateway_service::PaymentGatewayError::Stripe(msg) => ApiError::BadRequest(msg),
+            crate::domain::services::payment_gateway_service::PaymentGatewayError::PayPal(msg) => ApiError::BadRequest(msg),
+            crate::domain::services::payment_gateway_service::PaymentGatewayError::Ach(msg) => ApiError::BadRequest(msg),
+            crate::domain::services::payment_gateway_service::PaymentGatewayError::Config(_msg) => ApiError::Internal,
+            crate::domain::services::payment_gateway_service::PaymentGatewayError::InvalidAmount => ApiError::BadRequest("Invalid amount".to_string()),
+            crate::domain::services::payment_gateway_service::PaymentGatewayError::Failed(msg) => ApiError::BadRequest(msg),
+            crate::domain::services::payment_gateway_service::PaymentGatewayError::Http(_msg) => ApiError::Internal,
         }
     }
 }

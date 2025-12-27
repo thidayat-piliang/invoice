@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use sqlx::{PgPool, Postgres, QueryBuilder, Row};
 use uuid::Uuid;
 use chrono::{DateTime, Utc, NaiveDate, Datelike};
@@ -5,7 +7,8 @@ use std::sync::Arc;
 
 use crate::domain::models::{
     Invoice, InvoiceItem, InvoiceStatus, InvoiceResponse, InvoiceDetailResponse,
-    CreateInvoice, UpdateInvoice, InvoiceListFilter, CreatePayment
+    CreateInvoice, UpdateInvoice, InvoiceListFilter, CreatePayment,
+    InvoiceDiscussion, SenderType, DiscussionResponse
 };
 use crate::domain::services::TaxService;
 
@@ -83,6 +86,16 @@ impl InvoiceRepository {
         let items_json = serde_json::to_value(&items).unwrap_or(serde_json::Value::Array(vec![]));
         let tax_calculation_json = serde_json::to_value(&tax_calculation).unwrap_or(serde_json::Value::Null);
 
+        // Generate guest payment token (for guest checkout)
+        // Format: guest_{invoice_id}_{random_hash}
+        // We'll generate this after creating the invoice to get the invoice_id
+        // For now, use a placeholder that will be updated
+        let guest_payment_token: Option<String> = None;
+
+        // Partial Payment Settings (default: allow partial, no minimum)
+        let allow_partial_payment = create.allow_partial_payment.unwrap_or(true);
+        let min_payment_amount = create.min_payment_amount;
+
         // Retry logic for duplicate invoice numbers
         let max_retries = 5;
         for attempt in 0..max_retries {
@@ -106,9 +119,12 @@ impl InvoiceRepository {
                     issue_date, due_date, subtotal, tax_amount, discount_amount,
                     total_amount, amount_paid, items, notes, terms,
                     tax_calculation, tax_included, tax_label, tax_id,
-                    sent_at, created_at, updated_at
+                    sent_at, viewed_at, paid_at, reminder_sent_count, last_reminder_sent,
+                    notification_sent_at, whatsapp_sent_at, guest_payment_token,
+                    allow_partial_payment, min_payment_amount, partial_payment_count,
+                    created_at, updated_at
                 ) VALUES (
-                    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22
+                    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32
                 )
                 RETURNING *
                 "#,
@@ -133,13 +149,40 @@ impl InvoiceRepository {
             .bind(&tax_label)
             .bind(&tax_id)
             .bind(sent_at)
+            .bind(None::<chrono::DateTime<chrono::Utc>>) // viewed_at
+            .bind(None::<chrono::DateTime<chrono::Utc>>) // paid_at
+            .bind(0) // reminder_sent_count
+            .bind(None::<chrono::DateTime<chrono::Utc>>) // last_reminder_sent
+            .bind(None::<chrono::DateTime<chrono::Utc>>) // notification_sent_at
+            .bind(None::<chrono::DateTime<chrono::Utc>>) // whatsapp_sent_at
+            .bind(&guest_payment_token)
+            .bind(allow_partial_payment) // allow_partial_payment
+            .bind(min_payment_amount) // min_payment_amount
+            .bind(0) // partial_payment_count
             .bind(Utc::now())
             .bind(Utc::now())
             .fetch_one(&self.db)
             .await;
 
             match result {
-                Ok(invoice) => return Ok(invoice.to_invoice()),
+                Ok(invoice) => {
+                    // Generate and update guest payment token after successful insert
+                    let invoice_id = invoice.id;
+                    let guest_token = format!("guest_{}_{}", invoice_id, rand::random::<u32>() % 1000000);
+
+                    sqlx::query(
+                        "UPDATE invoices SET guest_payment_token = $1 WHERE id = $2"
+                    )
+                    .bind(&guest_token)
+                    .bind(invoice_id)
+                    .execute(&self.db)
+                    .await?;
+
+                    // Return with the updated token
+                    let mut updated_invoice = invoice.to_invoice();
+                    updated_invoice.guest_payment_token = Some(guest_token);
+                    return Ok(updated_invoice);
+                }
                 Err(sqlx::Error::Database(db_err)) => {
                     if db_err.is_unique_violation() && attempt < max_retries - 1 {
                         // Wait a tiny bit and retry
@@ -165,9 +208,12 @@ impl InvoiceRepository {
                 issue_date, due_date, subtotal, tax_amount, discount_amount,
                 total_amount, amount_paid, items, notes, terms,
                 tax_calculation, tax_included, tax_label, tax_id,
-                sent_at, created_at, updated_at
+                sent_at, viewed_at, paid_at, reminder_sent_count, last_reminder_sent,
+                notification_sent_at, whatsapp_sent_at, guest_payment_token,
+                allow_partial_payment, min_payment_amount, partial_payment_count,
+                created_at, updated_at
             ) VALUES (
-                $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22
+                $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32
             )
             RETURNING *
             "#,
@@ -192,12 +238,126 @@ impl InvoiceRepository {
         .bind(&tax_label)
         .bind(&tax_id)
         .bind(sent_at)
+        .bind(None::<chrono::DateTime<chrono::Utc>>) // viewed_at
+        .bind(None::<chrono::DateTime<chrono::Utc>>) // paid_at
+        .bind(0) // reminder_sent_count
+        .bind(None::<chrono::DateTime<chrono::Utc>>) // last_reminder_sent
+        .bind(None::<chrono::DateTime<chrono::Utc>>) // notification_sent_at
+        .bind(None::<chrono::DateTime<chrono::Utc>>) // whatsapp_sent_at
+        .bind(&guest_payment_token)
+        .bind(allow_partial_payment) // allow_partial_payment
+        .bind(min_payment_amount) // min_payment_amount
+        .bind(0) // partial_payment_count
         .bind(Utc::now())
         .bind(Utc::now())
         .fetch_one(&self.db)
         .await?;
 
-        Ok(invoice.to_invoice())
+        // Generate and update guest payment token after successful insert
+        let invoice_id = invoice.id;
+        let guest_token = format!("guest_{}_{}", invoice_id, rand::random::<u32>() % 1000000);
+
+        sqlx::query(
+            "UPDATE invoices SET guest_payment_token = $1 WHERE id = $2"
+        )
+        .bind(&guest_token)
+        .bind(invoice_id)
+        .execute(&self.db)
+        .await?;
+
+        // Return with the updated token
+        let mut updated_invoice = invoice.to_invoice();
+        updated_invoice.guest_payment_token = Some(guest_token);
+        Ok(updated_invoice)
+    }
+
+    /// Get invoice by ID (for guest access - no user_id check)
+    pub async fn get_invoice_by_id(&self, invoice_id: Uuid) -> Result<InvoiceDetailResponse, sqlx::Error> {
+        let row = sqlx::query(
+            r#"
+            SELECT
+                i.id, i.user_id, i.client_id, i.invoice_number, i.status,
+                i.issue_date, i.due_date, i.subtotal, i.tax_amount, i.discount_amount,
+                i.total_amount, i.amount_paid, i.items, i.notes, i.terms,
+                i.tax_calculation, i.tax_included, i.tax_label, i.tax_id,
+                i.pdf_url, i.receipt_image_url,
+                i.sent_at, i.viewed_at, i.paid_at, i.reminder_sent_count, i.last_reminder_sent,
+                i.notification_sent_at, i.whatsapp_sent_at, i.guest_payment_token,
+                i.allow_partial_payment, i.min_payment_amount, i.partial_payment_count,
+                i.created_at, i.updated_at,
+                c.name as client_name,
+                c.email as client_email,
+                c.phone as client_phone,
+                c.billing_address as client_address
+            FROM invoices i
+            JOIN clients c ON i.client_id = c.id
+            WHERE i.id = $1
+            "#,
+        )
+        .bind(invoice_id)
+        .fetch_optional(&self.db)
+        .await?;
+
+        match row {
+            Some(r) => {
+                let items: Vec<InvoiceItem> = serde_json::from_value(r.try_get("items")?).unwrap_or_default();
+                let status_str: String = r.try_get("status")?;
+                let status = match status_str.as_str() {
+                    "draft" => InvoiceStatus::Draft,
+                    "sent" => InvoiceStatus::Sent,
+                    "viewed" => InvoiceStatus::Viewed,
+                    "partial" => InvoiceStatus::Partial,
+                    "paid" => InvoiceStatus::Paid,
+                    "overdue" => InvoiceStatus::Overdue,
+                    "cancelled" => InvoiceStatus::Cancelled,
+                    _ => InvoiceStatus::Draft,
+                };
+                let balance_due: f64 = r.try_get::<f64, _>("total_amount")? - r.try_get::<f64, _>("amount_paid")?;
+
+                Ok(InvoiceDetailResponse {
+                    id: r.try_get("id")?,
+                    user_id: r.try_get("user_id")?,
+                    invoice_number: r.try_get("invoice_number")?,
+                    status,
+                    client_id: r.try_get("client_id")?,
+                    client_name: r.try_get("client_name")?,
+                    client_email: r.try_get("client_email")?,
+                    client_phone: r.try_get("client_phone")?,
+                    client_address: r.try_get("client_address")?,
+                    issue_date: r.try_get("issue_date")?,
+                    due_date: r.try_get("due_date")?,
+                    subtotal: r.try_get("subtotal")?,
+                    tax_amount: r.try_get("tax_amount")?,
+                    discount_amount: r.try_get("discount_amount")?,
+                    total_amount: r.try_get("total_amount")?,
+                    amount_paid: r.try_get("amount_paid")?,
+                    balance_due,
+                    items,
+                    notes: r.try_get("notes")?,
+                    terms: r.try_get("terms")?,
+                    tax_calculation: r.try_get("tax_calculation")?,
+                    tax_included: r.try_get("tax_included")?,
+                    tax_label: r.try_get("tax_label")?,
+                    tax_id: r.try_get("tax_id")?,
+                    pdf_url: r.try_get("pdf_url")?,
+                    receipt_image_url: r.try_get("receipt_image_url")?,
+                    sent_at: r.try_get("sent_at")?,
+                    viewed_at: r.try_get("viewed_at")?,
+                    paid_at: r.try_get("paid_at")?,
+                    reminder_sent_count: r.try_get("reminder_sent_count")?,
+                    last_reminder_sent: r.try_get("last_reminder_sent")?,
+                    notification_sent_at: r.try_get("notification_sent_at")?,
+                    whatsapp_sent_at: r.try_get("whatsapp_sent_at")?,
+                    guest_payment_token: r.try_get("guest_payment_token")?,
+                    allow_partial_payment: r.try_get("allow_partial_payment")?,
+                    min_payment_amount: r.try_get("min_payment_amount")?,
+                    partial_payment_count: r.try_get("partial_payment_count")?,
+                    created_at: r.try_get("created_at")?,
+                    updated_at: r.try_get("updated_at")?,
+                })
+            }
+            None => Err(sqlx::Error::RowNotFound),
+        }
     }
 
     pub async fn get_by_id(&self, user_id: Uuid, invoice_id: Uuid) -> Result<InvoiceDetailResponse, sqlx::Error> {
@@ -209,8 +369,10 @@ impl InvoiceRepository {
                 i.total_amount, i.amount_paid, i.items, i.notes, i.terms,
                 i.tax_calculation, i.tax_included, i.tax_label, i.tax_id,
                 i.pdf_url, i.receipt_image_url,
-                i.sent_at, i.paid_at, i.reminder_sent_count, i.last_reminder_sent,
-                i.created_at, i.updated_at, i.payment_method, i.payment_reference,
+                i.sent_at, i.viewed_at, i.paid_at, i.reminder_sent_count, i.last_reminder_sent,
+                i.notification_sent_at, i.whatsapp_sent_at, i.guest_payment_token,
+                i.allow_partial_payment, i.min_payment_amount, i.partial_payment_count,
+                i.created_at, i.updated_at,
                 c.name as client_name,
                 c.email as client_email,
                 c.phone as client_phone,
@@ -243,6 +405,7 @@ impl InvoiceRepository {
 
                 Ok(InvoiceDetailResponse {
                     id: r.try_get("id")?,
+                    user_id: r.try_get("user_id")?,
                     invoice_number: r.try_get("invoice_number")?,
                     status,
                     client_id: r.try_get("client_id")?,
@@ -268,9 +431,16 @@ impl InvoiceRepository {
                     pdf_url: r.try_get("pdf_url")?,
                     receipt_image_url: r.try_get("receipt_image_url")?,
                     sent_at: r.try_get("sent_at")?,
+                    viewed_at: r.try_get("viewed_at")?,
                     paid_at: r.try_get("paid_at")?,
                     reminder_sent_count: r.try_get("reminder_sent_count")?,
                     last_reminder_sent: r.try_get("last_reminder_sent")?,
+                    notification_sent_at: r.try_get("notification_sent_at")?,
+                    whatsapp_sent_at: r.try_get("whatsapp_sent_at")?,
+                    guest_payment_token: r.try_get("guest_payment_token")?,
+                    allow_partial_payment: r.try_get("allow_partial_payment")?,
+                    min_payment_amount: r.try_get("min_payment_amount")?,
+                    partial_payment_count: r.try_get("partial_payment_count")?,
                     created_at: r.try_get("created_at")?,
                     updated_at: r.try_get("updated_at")?,
                 })
@@ -415,13 +585,19 @@ impl InvoiceRepository {
         let tax_included = update.tax_included.unwrap_or(existing.tax_included);
         let items_json = serde_json::to_value(&items).unwrap_or(serde_json::Value::Array(vec![]));
 
+        // Partial payment settings
+        let allow_partial_payment = update.allow_partial_payment.unwrap_or(existing.allow_partial_payment);
+        let min_payment_amount = update.min_payment_amount;
+
         let invoice = sqlx::query_as::<_, InvoiceInsertRow>(
             r#"
             UPDATE invoices SET
                 client_id = $1, issue_date = $2, due_date = $3, items = $4,
                 notes = $5, terms = $6, discount_amount = $7, tax_included = $8,
-                subtotal = $9, tax_amount = $10, total_amount = $11, updated_at = $12
-            WHERE id = $13 AND user_id = $14
+                subtotal = $9, tax_amount = $10, total_amount = $11,
+                allow_partial_payment = $12, min_payment_amount = $13,
+                updated_at = $14
+            WHERE id = $15 AND user_id = $16
             RETURNING *
             "#,
         )
@@ -429,13 +605,15 @@ impl InvoiceRepository {
         .bind(issue_date)
         .bind(due_date)
         .bind(&items_json)
-        .bind(&notes)
+        .bind(notes)
         .bind(&terms)
         .bind(discount)
         .bind(tax_included)
         .bind(subtotal)
         .bind(tax_amount)
         .bind(total_amount)
+        .bind(allow_partial_payment)
+        .bind(min_payment_amount)
         .bind(Utc::now())
         .bind(invoice_id)
         .bind(user_id)
@@ -468,34 +646,58 @@ impl InvoiceRepository {
         payment: CreatePayment,
     ) -> Result<Invoice, sqlx::Error> {
         // Get invoice
-        let mut invoice = self.get_invoice_internal(user_id, invoice_id).await?;
+        let invoice = self.get_invoice_internal(user_id, invoice_id).await?;
 
-        // Update amount paid
-        invoice.amount_paid += payment.amount;
-
-        // Update status
-        if invoice.amount_paid >= invoice.total_amount {
-            invoice.status = InvoiceStatus::Paid;
-            invoice.paid_at = Some(Utc::now());
-        } else if invoice.amount_paid > 0.0 {
-            invoice.status = InvoiceStatus::Partial;
+        // Validate partial payment settings
+        if !invoice.allow_partial_payment {
+            return Err(sqlx::Error::RowNotFound);
         }
 
-        invoice.updated_at = Utc::now();
+        // Check minimum payment amount
+        if let Some(min_amount) = invoice.min_payment_amount {
+            if payment.amount < min_amount {
+                return Err(sqlx::Error::RowNotFound);
+            }
+        }
+
+        // Update amount paid
+        let new_amount_paid = invoice.amount_paid + payment.amount;
+
+        // Check if payment exceeds balance
+        if new_amount_paid > invoice.total_amount {
+            return Err(sqlx::Error::RowNotFound);
+        }
+
+        // Update status
+        let mut status = invoice.status;
+        let mut paid_at = invoice.paid_at;
+        let mut partial_payment_count = invoice.partial_payment_count;
+
+        if new_amount_paid >= invoice.total_amount {
+            status = InvoiceStatus::Paid;
+            paid_at = Some(Utc::now());
+        } else if new_amount_paid > 0.0 {
+            if status != InvoiceStatus::Partial {
+                partial_payment_count += 1;
+            }
+            status = InvoiceStatus::Partial;
+        }
 
         // Update in database
         let updated = sqlx::query_as::<_, InvoiceInsertRow>(
             r#"
             UPDATE invoices SET
-                amount_paid = $1, status = $2, paid_at = $3, updated_at = $4
-            WHERE id = $5 AND user_id = $6
+                amount_paid = $1, status = $2, paid_at = $3,
+                partial_payment_count = $4, updated_at = $5
+            WHERE id = $6 AND user_id = $7
             RETURNING *
             "#,
         )
-        .bind(invoice.amount_paid)
-        .bind(&invoice.status.to_string())
-        .bind(invoice.paid_at)
-        .bind(invoice.updated_at)
+        .bind(new_amount_paid)
+        .bind(&status.to_string())
+        .bind(paid_at)
+        .bind(partial_payment_count)
+        .bind(Utc::now())
         .bind(invoice_id)
         .bind(user_id)
         .fetch_one(&self.db)
@@ -525,6 +727,80 @@ impl InvoiceRepository {
         Ok(updated.to_invoice())
     }
 
+    /// Record payment for guest checkout (no user_id check)
+    pub async fn record_payment_guest(
+        &self,
+        invoice_id: Uuid,
+        payment: CreatePayment,
+    ) -> Result<Invoice, sqlx::Error> {
+        // Get user_id from invoice
+        let user_id: Uuid = sqlx::query_scalar(
+            "SELECT user_id FROM invoices WHERE id = $1"
+        )
+        .bind(invoice_id)
+        .fetch_one(&self.db)
+        .await?;
+
+        // Get invoice
+        let invoice = self.get_invoice_internal(user_id, invoice_id).await?;
+
+        // Validate partial payment settings
+        if !invoice.allow_partial_payment {
+            return Err(sqlx::Error::RowNotFound);
+        }
+
+        // Check minimum payment amount
+        if let Some(min_amount) = invoice.min_payment_amount {
+            if payment.amount < min_amount {
+                return Err(sqlx::Error::RowNotFound);
+            }
+        }
+
+        // Update amount paid
+        let new_amount_paid = invoice.amount_paid + payment.amount;
+
+        // Check if payment exceeds balance
+        if new_amount_paid > invoice.total_amount {
+            return Err(sqlx::Error::RowNotFound);
+        }
+
+        // Update status
+        let mut status = invoice.status;
+        let mut paid_at = invoice.paid_at;
+        let mut partial_payment_count = invoice.partial_payment_count;
+
+        if new_amount_paid >= invoice.total_amount {
+            status = InvoiceStatus::Paid;
+            paid_at = Some(Utc::now());
+        } else if new_amount_paid > 0.0 {
+            if status != InvoiceStatus::Partial {
+                partial_payment_count += 1;
+            }
+            status = InvoiceStatus::Partial;
+        }
+
+        // Update in database
+        let updated = sqlx::query_as::<_, InvoiceInsertRow>(
+            r#"
+            UPDATE invoices SET
+                amount_paid = $1, status = $2, paid_at = $3,
+                partial_payment_count = $4, updated_at = $5
+            WHERE id = $6
+            RETURNING *
+            "#,
+        )
+        .bind(new_amount_paid)
+        .bind(&status.to_string())
+        .bind(paid_at)
+        .bind(partial_payment_count)
+        .bind(Utc::now())
+        .bind(invoice_id)
+        .fetch_one(&self.db)
+        .await?;
+
+        Ok(updated.to_invoice())
+    }
+
     pub async fn send_invoice(
         &self,
         user_id: Uuid,
@@ -532,7 +808,7 @@ impl InvoiceRepository {
         email: Option<String>,
     ) -> Result<(), sqlx::Error> {
         // Get client email
-        let client_email = match email {
+        let _client_email = match email {
             Some(e) => e,
             None => {
                 sqlx::query_scalar::<_, String>(
@@ -634,9 +910,16 @@ struct InvoiceRow {
     pdf_url: Option<String>,
     receipt_image_url: Option<String>,
     sent_at: Option<DateTime<Utc>>,
+    viewed_at: Option<DateTime<Utc>>,
     paid_at: Option<DateTime<Utc>>,
     reminder_sent_count: i32,
     last_reminder_sent: Option<DateTime<Utc>>,
+    notification_sent_at: Option<DateTime<Utc>>,
+    whatsapp_sent_at: Option<DateTime<Utc>>,
+    guest_payment_token: Option<String>,
+    allow_partial_payment: bool,
+    min_payment_amount: Option<f64>,
+    partial_payment_count: i32,
     created_at: DateTime<Utc>,
     updated_at: DateTime<Utc>,
     // Additional columns in invoices table
@@ -677,9 +960,16 @@ struct InvoiceInsertRow {
     pdf_url: Option<String>,
     receipt_image_url: Option<String>,
     sent_at: Option<DateTime<Utc>>,
+    viewed_at: Option<DateTime<Utc>>,
     paid_at: Option<DateTime<Utc>>,
     reminder_sent_count: i32,
     last_reminder_sent: Option<DateTime<Utc>>,
+    notification_sent_at: Option<DateTime<Utc>>,
+    whatsapp_sent_at: Option<DateTime<Utc>>,
+    guest_payment_token: Option<String>,
+    allow_partial_payment: bool,
+    min_payment_amount: Option<f64>,
+    partial_payment_count: i32,
     created_at: DateTime<Utc>,
     updated_at: DateTime<Utc>,
     payment_method: Option<String>,
@@ -724,9 +1014,16 @@ impl InvoiceRow {
             pdf_url: self.pdf_url,
             receipt_image_url: self.receipt_image_url,
             sent_at: self.sent_at,
+            viewed_at: self.viewed_at,
             paid_at: self.paid_at,
             reminder_sent_count: self.reminder_sent_count,
             last_reminder_sent: self.last_reminder_sent,
+            notification_sent_at: self.notification_sent_at,
+            whatsapp_sent_at: self.whatsapp_sent_at,
+            guest_payment_token: self.guest_payment_token,
+            allow_partial_payment: self.allow_partial_payment,
+            min_payment_amount: self.min_payment_amount,
+            partial_payment_count: self.partial_payment_count,
             created_at: self.created_at,
             updated_at: self.updated_at,
         }
@@ -750,6 +1047,7 @@ impl InvoiceRow {
 
         InvoiceDetailResponse {
             id: self.id,
+            user_id: self.user_id,
             invoice_number: self.invoice_number,
             status,
             client_id: self.client_id,
@@ -775,9 +1073,16 @@ impl InvoiceRow {
             pdf_url: self.pdf_url,
             receipt_image_url: self.receipt_image_url,
             sent_at: self.sent_at,
+            viewed_at: self.viewed_at,
             paid_at: self.paid_at,
             reminder_sent_count: self.reminder_sent_count,
             last_reminder_sent: self.last_reminder_sent,
+            notification_sent_at: self.notification_sent_at,
+            whatsapp_sent_at: self.whatsapp_sent_at,
+            guest_payment_token: self.guest_payment_token,
+            allow_partial_payment: self.allow_partial_payment,
+            min_payment_amount: self.min_payment_amount,
+            partial_payment_count: self.partial_payment_count,
             created_at: self.created_at,
             updated_at: self.updated_at,
         }
@@ -822,11 +1127,186 @@ impl InvoiceInsertRow {
             pdf_url: self.pdf_url,
             receipt_image_url: self.receipt_image_url,
             sent_at: self.sent_at,
+            viewed_at: self.viewed_at,
             paid_at: self.paid_at,
             reminder_sent_count: self.reminder_sent_count,
             last_reminder_sent: self.last_reminder_sent,
+            notification_sent_at: self.notification_sent_at,
+            whatsapp_sent_at: self.whatsapp_sent_at,
+            guest_payment_token: self.guest_payment_token,
+            allow_partial_payment: self.allow_partial_payment,
+            min_payment_amount: self.min_payment_amount,
+            partial_payment_count: self.partial_payment_count,
             created_at: self.created_at,
             updated_at: self.updated_at,
         }
+    }
+}
+
+// Helper struct for discussion messages
+#[derive(sqlx::FromRow)]
+struct InvoiceDiscussionRow {
+    id: Uuid,
+    invoice_id: Uuid,
+    sender_type: String,
+    message: String,
+    created_at: DateTime<Utc>,
+}
+
+impl InvoiceDiscussionRow {
+    fn to_invoice_discussion(self) -> InvoiceDiscussion {
+        let sender_type = match self.sender_type.as_str() {
+            "seller" => SenderType::Seller,
+            "buyer" => SenderType::Buyer,
+            _ => SenderType::Buyer, // Default to buyer
+        };
+
+        InvoiceDiscussion {
+            id: self.id,
+            invoice_id: self.invoice_id,
+            sender_type,
+            message: self.message,
+            created_at: self.created_at,
+        }
+    }
+}
+
+impl InvoiceRepository {
+    /// Mark invoice as viewed by buyer
+    pub async fn mark_as_viewed(&self, invoice_id: Uuid) -> Result<Invoice, sqlx::Error> {
+        let result = sqlx::query_as::<_, InvoiceRow>(
+            r#"
+            UPDATE invoices
+            SET viewed_at = $1, status = 'viewed', updated_at = $1
+            WHERE id = $2
+            RETURNING *
+            "#,
+        )
+        .bind(Utc::now())
+        .bind(invoice_id)
+        .fetch_one(&self.db)
+        .await?;
+
+        Ok(result.to_invoice())
+    }
+
+    /// Update notification sent timestamp
+    pub async fn update_notification_sent(
+        &self,
+        invoice_id: Uuid,
+        whatsapp: bool,
+    ) -> Result<(), sqlx::Error> {
+        if whatsapp {
+            sqlx::query(
+                "UPDATE invoices SET whatsapp_sent_at = $1, updated_at = $1 WHERE id = $2",
+            )
+            .bind(Utc::now())
+            .bind(invoice_id)
+            .execute(&self.db)
+            .await?;
+        } else {
+            sqlx::query(
+                "UPDATE invoices SET notification_sent_at = $1, updated_at = $1 WHERE id = $2",
+            )
+            .bind(Utc::now())
+            .bind(invoice_id)
+            .execute(&self.db)
+            .await?;
+        }
+        Ok(())
+    }
+
+    /// Add a discussion message to an invoice
+    pub async fn add_discussion_message(
+        &self,
+        invoice_id: Uuid,
+        sender_type: SenderType,
+        message: String,
+    ) -> Result<InvoiceDiscussion, sqlx::Error> {
+        let result = sqlx::query_as::<_, InvoiceDiscussionRow>(
+            r#"
+            INSERT INTO invoice_discussions (invoice_id, sender_type, message, created_at)
+            VALUES ($1, $2, $3, $4)
+            RETURNING *
+            "#,
+        )
+        .bind(invoice_id)
+        .bind(sender_type.to_string())
+        .bind(message)
+        .bind(Utc::now())
+        .fetch_one(&self.db)
+        .await?;
+
+        Ok(result.to_invoice_discussion())
+    }
+
+    /// Get all discussion messages for an invoice
+    pub async fn get_discussion_messages(
+        &self,
+        invoice_id: Uuid,
+    ) -> Result<Vec<DiscussionResponse>, sqlx::Error> {
+        let rows = sqlx::query_as::<_, InvoiceDiscussionRow>(
+            r#"
+            SELECT * FROM invoice_discussions
+            WHERE invoice_id = $1
+            ORDER BY created_at ASC
+            "#,
+        )
+        .bind(invoice_id)
+        .fetch_all(&self.db)
+        .await?;
+
+        Ok(rows
+            .into_iter()
+            .map(|row| DiscussionResponse {
+                id: row.id,
+                invoice_id: row.invoice_id,
+                sender_type: row.sender_type.to_string(),
+                message: row.message,
+                created_at: row.created_at,
+            })
+            .collect())
+    }
+
+    /// Get discussion messages for guest access (no authentication required)
+    pub async fn get_discussion_messages_guest(
+        &self,
+        invoice_id: Uuid,
+    ) -> Result<Vec<DiscussionResponse>, sqlx::Error> {
+        // Verify invoice exists first
+        let invoice_exists: bool = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM invoices WHERE id = $1)"
+        )
+        .bind(invoice_id)
+        .fetch_one(&self.db)
+        .await?;
+
+        if !invoice_exists {
+            return Err(sqlx::Error::RowNotFound);
+        }
+
+        self.get_discussion_messages(invoice_id).await
+    }
+
+    /// Add a discussion message for guest access
+    pub async fn add_discussion_message_guest(
+        &self,
+        invoice_id: Uuid,
+        message: String,
+    ) -> Result<InvoiceDiscussion, sqlx::Error> {
+        // Verify invoice exists first
+        let invoice_exists: bool = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM invoices WHERE id = $1)"
+        )
+        .bind(invoice_id)
+        .fetch_one(&self.db)
+        .await?;
+
+        if !invoice_exists {
+            return Err(sqlx::Error::RowNotFound);
+        }
+
+        // Guests are always buyers
+        self.add_discussion_message(invoice_id, SenderType::Buyer, message).await
     }
 }

@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use serde::Deserialize;
 use std::env;
 use crate::config::validation::{validate_env, print_config_summary};

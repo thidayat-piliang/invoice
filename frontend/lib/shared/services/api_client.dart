@@ -310,6 +310,57 @@ class ApiClient {
     return dio.post('/invoices/$id/payments', data: data);
   }
 
+  Future<Response> sendInvoiceWhatsapp(String id) async {
+    return dio.post('/invoices/$id/send-whatsapp', {});
+  }
+
+  Future<Response> markInvoiceViewed(String id) async {
+    return dio.post('/invoices/$id/view', {});
+  }
+
+  Future<Response> sendPaymentConfirmation(String id, Map<String, dynamic> data) async {
+    return dio.post('/invoices/$id/send-confirmation', data: data);
+  }
+
+  // Discussion endpoints
+  Future<Response> getDiscussionMessages(String id) async {
+    return dio.get('/invoices/$id/discussion');
+  }
+
+  Future<Response> addDiscussionMessage(String id, Map<String, dynamic> data) async {
+    return dio.post('/invoices/$id/discussion', data: data);
+  }
+
+  // Guest discussion endpoints
+  Future<Response> getGuestDiscussionMessages(String token) async {
+    return dio.get('/guest/discussion/$token');
+  }
+
+  Future<Response> addGuestDiscussionMessage(String token, Map<String, dynamic> data) async {
+    return dio.post('/guest/discussion/$token', data: data);
+  }
+
+  // Guest checkout endpoints
+  Future<Response> getGuestInvoice(String token) async {
+    return dio.get('/guest/invoice/$token');
+  }
+
+  Future<Response> processGuestPayment(String token, Map<String, dynamic> data) async {
+    return dio.post('/guest/pay/$token', data: data);
+  }
+
+  Future<Response> getGuestPaymentHistory(Map<String, dynamic> data) async {
+    return dio.post('/guest/history', data: data);
+  }
+
+  Future<Response> markGuestInvoiceViewed(String token) async {
+    return dio.post('/guest/view/$token', {});
+  }
+
+  Future<Response> sendGuestPaymentLink(String token) async {
+    return dio.post('/guest/send-link/$token', {});
+  }
+
   // Client endpoints
   Future<Response> getClients({String? search}) async {
     final params = <String, dynamic>{};

@@ -221,12 +221,24 @@ class InvoiceCard extends StatelessWidget {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(
-                    invoice.invoiceNumber,
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                    ),
+                  Row(
+                    children: [
+                      Text(
+                        invoice.invoiceNumber,
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      if (invoice.isViewed) ...[
+                        const SizedBox(width: 6),
+                        const Icon(Icons.visibility, size: 14, color: Colors.blue),
+                      ],
+                      if (invoice.hasGuestLink) ...[
+                        const SizedBox(width: 6),
+                        const Icon(Icons.link, size: 14, color: Colors.green),
+                      ],
+                    ],
                   ),
                   _StatusBadge(status: invoice.status),
                 ],
@@ -239,6 +251,39 @@ class InvoiceCard extends StatelessWidget {
                   fontWeight: FontWeight.w500,
                 ),
               ),
+              if (invoice.sentAt != null) ...[
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    Icon(Icons.send, size: 12, color: Colors.grey[600]),
+                    const SizedBox(width: 4),
+                    Text(
+                      'Sent: ${_formatDateTime(invoice.sentAt!)}',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: Colors.grey[600],
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+              if (invoice.isViewed) ...[
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    Icon(Icons.visibility, size: 12, color: Colors.blue),
+                    const SizedBox(width: 4),
+                    Text(
+                      'Viewed: ${_formatDateTime(invoice.viewedAt!)}',
+                      style: const TextStyle(
+                        fontSize: 11,
+                        color: Colors.blue,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
               const SizedBox(height: 8),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -250,13 +295,39 @@ class InvoiceCard extends StatelessWidget {
                       color: invoice.isOverdue ? Colors.red : Colors.grey[600],
                     ),
                   ),
-                  Text(
-                    '\$${invoice.totalAmount.toStringAsFixed(2)}',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
-                      color: Theme.of(context).colorScheme.primary,
-                    ),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Text(
+                        '\$${invoice.totalAmount.toStringAsFixed(2)}',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
+                      ),
+                      if (invoice.isPartial) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          'Paid: \$${invoice.amountPaid.toStringAsFixed(2)}',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Colors.orange.shade700,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                      if (invoice.isPartial && invoice.allowPartialPayment) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          'Partial payments allowed',
+                          style: TextStyle(
+                            fontSize: 10,
+                            color: Colors.orange.shade600,
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
                 ],
               ),
@@ -269,6 +340,10 @@ class InvoiceCard extends StatelessWidget {
 
   String _formatDate(DateTime date) {
     return '${date.month}/${date.day}/${date.year}';
+  }
+
+  String _formatDateTime(DateTime date) {
+    return '${date.month}/${date.day}/${date.year} ${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
   }
 }
 

@@ -65,6 +65,10 @@ class NotificationSettings {
   final bool emailPaymentReminder;
   final bool pushPaymentReceived;
   final bool pushOverdue;
+  final bool? whatsappInvoiceSent;
+  final bool? whatsappPaymentConfirmation;
+  final bool? whatsappUnviewedReminder;
+  final bool? trackInvoiceRead;
 
   NotificationSettings({
     required this.emailPaymentReceived,
@@ -72,6 +76,10 @@ class NotificationSettings {
     required this.emailPaymentReminder,
     required this.pushPaymentReceived,
     required this.pushOverdue,
+    this.whatsappInvoiceSent,
+    this.whatsappPaymentConfirmation,
+    this.whatsappUnviewedReminder,
+    this.trackInvoiceRead,
   });
 
   factory NotificationSettings.fromJson(Map<String, dynamic> json) {
@@ -81,6 +89,10 @@ class NotificationSettings {
       emailPaymentReminder: json['email_payment_reminder'] ?? false,
       pushPaymentReceived: json['push_payment_received'] ?? false,
       pushOverdue: json['push_overdue'] ?? false,
+      whatsappInvoiceSent: json['whatsapp_invoice_sent'] ?? false,
+      whatsappPaymentConfirmation: json['whatsapp_payment_confirmation'] ?? false,
+      whatsappUnviewedReminder: json['whatsapp_unviewed_reminder'] ?? false,
+      trackInvoiceRead: json['track_invoice_read'] ?? true,
     );
   }
 
@@ -91,6 +103,10 @@ class NotificationSettings {
       'email_payment_reminder': emailPaymentReminder,
       'push_payment_received': pushPaymentReceived,
       'push_overdue': pushOverdue,
+      'whatsapp_invoice_sent': whatsappInvoiceSent,
+      'whatsapp_payment_confirmation': whatsappPaymentConfirmation,
+      'whatsapp_unviewed_reminder': whatsappUnviewedReminder,
+      'track_invoice_read': trackInvoiceRead,
     };
   }
 }

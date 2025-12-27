@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use std::sync::Arc;
 use uuid::Uuid;
 use chrono::{DateTime, Utc};
@@ -96,6 +98,7 @@ impl PaymentService {
             PaymentMethod::Check => "Check",
             PaymentMethod::Cash => "Cash",
             PaymentMethod::BankTransfer => "Bank Transfer",
+            PaymentMethod::AchDebit => "ACH Debit",
         };
 
         let _ = self.email_service.send_payment_confirmation(

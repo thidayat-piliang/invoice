@@ -583,4 +583,80 @@ impl ApiTestClient {
         }
         request.send().await
     }
+
+    // Discussion endpoints
+    pub async fn get_discussion_messages(&self, invoice_id: &str) -> Result<reqwest::Response, reqwest::Error> {
+        let mut request = self.client.get(&format!("{}/api/v1/invoices/{}/discussion", self.base_url, invoice_id));
+        if let Some(auth) = self.get_auth_header() {
+            request = request.header("Authorization", auth);
+        }
+        request.send().await
+    }
+
+    pub async fn add_discussion_message(&self, invoice_id: &str, message: &str) -> Result<reqwest::Response, reqwest::Error> {
+        let mut request = self.client.post(&format!("{}/api/v1/invoices/{}/discussion", self.base_url, invoice_id))
+            .json(&serde_json::json!({
+                "message": message,
+            }));
+        if let Some(auth) = self.get_auth_header() {
+            request = request.header("Authorization", auth);
+        }
+        request.send().await
+    }
+
+    // Guest discussion endpoints
+    pub async fn get_guest_discussion_messages(&self, token: &str) -> Result<reqwest::Response, reqwest::Error> {
+        self.client.get(&format!("{}/api/v1/guest/discussion/{}", self.base_url, token))
+            .send()
+            .await
+    }
+
+    pub async fn add_guest_discussion_message(&self, token: &str, message: &str) -> Result<reqwest::Response, reqwest::Error> {
+        self.client.post(&format!("{}/api/v1/guest/discussion/{}", self.base_url, token))
+            .json(&serde_json::json!({
+                "message": message,
+            }))
+            .send()
+            .await
+    }
+
+    // Guest checkout endpoints
+    pub async fn get_guest_invoice(&self, token: &str) -> Result<reqwest::Response, reqwest::Error> {
+        self.client.get(&format!("{}/api/v1/guest/invoice/{}", self.base_url, token))
+            .send()
+            .await
+    }
+
+    pub async fn process_guest_payment(&self, token: &str, amount: f64) -> Result<reqwest::Response, reqwest::Error> {
+        self.client.post(&format!("{}/api/v1/guest/pay/{}", self.base_url, token))
+            .json(&serde_json::json!({
+                "amount": amount,
+                "payment_method": "PayPal",
+            }))
+            .send()
+            .await
+    }
+
+    pub async fn get_guest_payment_history(&self, email: &str) -> Result<reqwest::Response, reqwest::Error> {
+        self.client.post(&format!("{}/api/v1/guest/history", self.base_url))
+            .json(&serde_json::json!({
+                "email": email,
+            }))
+            .send()
+            .await
+    }
+
+    pub async fn mark_guest_invoice_viewed(&self, token: &str) -> Result<reqwest::Response, reqwest::Error> {
+        self.client.post(&format!("{}/api/v1/guest/view/{}", self.base_url, token))
+            .json(&serde_json::json!({}))
+            .send()
+            .await
+    }
+
+    pub async fn send_guest_payment_link(&self, token: &str) -> Result<reqwest::Response, reqwest::Error> {
+        self.client.post(&format!("{}/api/v1/guest/send-link/{}", self.base_url, token))
+            .json(&serde_json::json!({}))
+            .send()
+            .await
+    }
 }

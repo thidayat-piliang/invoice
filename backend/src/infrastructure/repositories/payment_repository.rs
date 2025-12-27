@@ -57,6 +57,49 @@ impl PaymentRepository {
         Ok(payment.to_payment())
     }
 
+    /// Create payment using CreatePayment struct (for guest checkout)
+    pub async fn create_payment(
+        &self,
+        create: crate::domain::models::payment::CreatePayment,
+    ) -> Result<Payment, sqlx::Error> {
+        // Get user_id from invoice
+        let user_id: Uuid = sqlx::query_scalar(
+            "SELECT user_id FROM invoices WHERE id = $1"
+        )
+        .bind(create.invoice_id)
+        .fetch_one(&self.db)
+        .await?;
+
+        let payment = sqlx::query_as::<_, PaymentRow>(
+            r#"
+            INSERT INTO payments (
+                id, invoice_id, user_id, amount, currency, payment_method,
+                gateway, gateway_payment_id, gateway_fee, status, paid_by, notes,
+                created_at, updated_at
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+            RETURNING *
+            "#,
+        )
+        .bind(Uuid::new_v4())
+        .bind(create.invoice_id)
+        .bind(user_id)
+        .bind(create.amount)
+        .bind("USD") // default currency
+        .bind(create.payment_method.to_string())
+        .bind(&create.gateway)
+        .bind(&create.gateway_payment_id)
+        .bind(create.gateway_fee.unwrap_or(0.0))
+        .bind("completed") // status
+        .bind(&create.paid_by)
+        .bind(&create.notes)
+        .bind(Utc::now())
+        .bind(Utc::now())
+        .fetch_one(&self.db)
+        .await?;
+
+        Ok(payment.to_payment())
+    }
+
     pub async fn find_by_id(&self, user_id: Uuid, payment_id: Uuid) -> Result<Option<PaymentResponse>, sqlx::Error> {
         let payment = sqlx::query_as::<_, PaymentResponseRow>(
             r#"

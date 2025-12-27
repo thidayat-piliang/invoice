@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use sqlx::{postgres::PgPoolOptions, PgPool, Error, migrate::MigrateError};
 use std::time::Duration;
 

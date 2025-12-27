@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use std::env;
 use thiserror::Error;
 
@@ -262,6 +264,7 @@ pub fn is_test_mode() -> bool {
 }
 
 /// Check if email queue should be skipped
+#[allow(dead_code)]
 pub fn should_skip_queue() -> bool {
     env::var("SKIP_QUEUE").is_ok()
 }

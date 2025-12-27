@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use prometheus::{
     register_int_counter, register_int_gauge, register_histogram,
     IntCounter, IntGauge, Histogram, Encoder, TextEncoder, Registry

@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use crate::domain::models::{
     TaxSetting, CreateTaxSetting, UpdateTaxSetting, TaxCalculation, TaxSummary,
     TaxBreakdownItem, validate_tax_rate, validate_tax_id
@@ -246,7 +248,7 @@ impl TaxService {
     /// Get tax summary for a period
     pub async fn get_tax_summary(
         &self,
-        organization_id: Uuid,
+        _organization_id: Uuid,
         invoices: Vec<crate::domain::models::Invoice>,
     ) -> Result<TaxSummary, TaxError> {
         let mut subtotal = 0.0;

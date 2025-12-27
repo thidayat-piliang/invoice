@@ -1,4 +1,4 @@
-use sqlx::{PgPool, Postgres, QueryBuilder, Row};
+use sqlx::{PgPool, Postgres, QueryBuilder};
 use uuid::Uuid;
 use chrono::{DateTime, Utc};
 

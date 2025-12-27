@@ -41,6 +41,8 @@ pub enum PaymentMethod {
     Cash,
     #[serde(rename = "bank_transfer")]
     BankTransfer,
+    #[serde(rename = "ach_debit")]
+    AchDebit,
 }
 
 impl std::fmt::Display for PaymentMethod {
@@ -51,6 +53,7 @@ impl std::fmt::Display for PaymentMethod {
             PaymentMethod::Check => write!(f, "check"),
             PaymentMethod::Cash => write!(f, "cash"),
             PaymentMethod::BankTransfer => write!(f, "bank_transfer"),
+            PaymentMethod::AchDebit => write!(f, "ach_debit"),
         }
     }
 }

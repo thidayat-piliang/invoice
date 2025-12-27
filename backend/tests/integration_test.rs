@@ -33,6 +33,7 @@ mod integration {
     pub mod advanced_features_test;
     pub mod tax_test;
     pub mod paypal_test;
+    pub mod discussion_test;
 }
 
 #[cfg(test)]

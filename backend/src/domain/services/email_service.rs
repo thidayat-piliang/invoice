@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use lettre::{
     message::{Mailbox, MultiPart, SinglePart, header::{ContentType, ContentDisposition}},
     transport::smtp::{authentication::Credentials, client::{Tls, TlsParameters}},
@@ -17,6 +19,7 @@ pub enum EmailError {
     MessageBuildError,
 }
 
+#[derive(Debug)]
 pub struct EmailConfig {
     pub smtp_host: String,
     pub smtp_port: u16,
@@ -26,6 +29,7 @@ pub struct EmailConfig {
     pub from_name: String,
 }
 
+#[derive(Debug)]
 pub struct EmailService {
     config: EmailConfig,
     skip_queue: bool,

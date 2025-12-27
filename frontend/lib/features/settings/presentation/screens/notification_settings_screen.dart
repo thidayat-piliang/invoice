@@ -15,6 +15,10 @@ class _NotificationSettingsScreenState extends ConsumerState<NotificationSetting
   bool _emailPaymentReminder = false;
   bool _pushPaymentReceived = false;
   bool _pushOverdue = false;
+  bool _whatsappInvoiceSent = false;
+  bool _whatsappPaymentConfirmation = false;
+  bool _whatsappUnviewedReminder = false;
+  bool _trackInvoiceRead = true;
 
   @override
   void initState() {
@@ -28,6 +32,11 @@ class _NotificationSettingsScreenState extends ConsumerState<NotificationSetting
           _emailPaymentReminder = settings.emailPaymentReminder;
           _pushPaymentReceived = settings.pushPaymentReceived;
           _pushOverdue = settings.pushOverdue;
+          // New settings with defaults
+          _whatsappInvoiceSent = settings.whatsappInvoiceSent ?? false;
+          _whatsappPaymentConfirmation = settings.whatsappPaymentConfirmation ?? false;
+          _whatsappUnviewedReminder = settings.whatsappUnviewedReminder ?? false;
+          _trackInvoiceRead = settings.trackInvoiceRead ?? true;
         });
       }
     });
@@ -40,6 +49,10 @@ class _NotificationSettingsScreenState extends ConsumerState<NotificationSetting
       emailPaymentReminder: _emailPaymentReminder,
       pushPaymentReceived: _pushPaymentReceived,
       pushOverdue: _pushOverdue,
+      whatsappInvoiceSent: _whatsappInvoiceSent,
+      whatsappPaymentConfirmation: _whatsappPaymentConfirmation,
+      whatsappUnviewedReminder: _whatsappUnviewedReminder,
+      trackInvoiceRead: _trackInvoiceRead,
     );
 
     final success = await ref.read(settingsProvider.notifier).updateNotificationSettings(settings);
@@ -71,6 +84,27 @@ class _NotificationSettingsScreenState extends ConsumerState<NotificationSetting
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Invoice Tracking
+            const Text(
+              'Invoice Tracking',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 12),
+            Card(
+              child: Column(
+                children: [
+                  _buildSwitchTile(
+                    'Track Invoice Read',
+                    'Enable read receipt tracking for invoices',
+                    _trackInvoiceRead,
+                    (value) => setState(() => _trackInvoiceRead = value!),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 24),
+
+            // Email Notifications
             const Text(
               'Email Notifications',
               style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
@@ -103,6 +137,42 @@ class _NotificationSettingsScreenState extends ConsumerState<NotificationSetting
               ),
             ),
             const SizedBox(height: 24),
+
+            // WhatsApp Notifications
+            const Text(
+              'WhatsApp Notifications',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 12),
+            Card(
+              child: Column(
+                children: [
+                  _buildSwitchTile(
+                    'Invoice Sent',
+                    'Send WhatsApp when invoice is sent',
+                    _whatsappInvoiceSent,
+                    (value) => setState(() => _whatsappInvoiceSent = value!),
+                  ),
+                  const Divider(height: 1),
+                  _buildSwitchTile(
+                    'Payment Confirmation',
+                    'Send payment confirmation via WhatsApp',
+                    _whatsappPaymentConfirmation,
+                    (value) => setState(() => _whatsappPaymentConfirmation = value!),
+                  ),
+                  const Divider(height: 1),
+                  _buildSwitchTile(
+                    'Unviewed Reminder',
+                    'Remind clients who haven\'t viewed invoice',
+                    _whatsappUnviewedReminder,
+                    (value) => setState(() => _whatsappUnviewedReminder = value!),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 24),
+
+            // Push Notifications
             const Text(
               'Push Notifications',
               style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),

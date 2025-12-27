@@ -20,8 +20,8 @@ use tower_http::{
 use std::time::Duration;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-use crate::api::routes::{auth, invoices, reports, settings, clients, payments, expenses, metrics, files, tax, paypal};
-use crate::domain::services::{InvoiceService, AuthService, EmailService, EmailConfig, PdfService, ReportService, SettingsService, ClientService, PaymentService, ExpenseService, RedisService, MetricsService, FileService, NotificationService, TaxService, PaymentGatewayService, MonitoringService, EmailQueueService};
+use crate::api::routes::{auth, invoices, reports, settings, clients, payments, expenses, metrics, files, tax, paypal, guest};
+use crate::domain::services::{InvoiceService, AuthService, EmailService, EmailConfig, PdfService, ReportService, SettingsService, ClientService, PaymentService, ExpenseService, RedisService, MetricsService, FileService, NotificationService, TaxService, PaymentGatewayService, MonitoringService, EmailQueueService, EnhancedNotificationService, WhatsAppService};
 use crate::application::use_cases::*;
 use crate::infrastructure::repositories::{InvoiceRepository, ClientRepository, UserRepository, ReportRepositoryImpl, PaymentRepository, ExpenseRepository, TaxRepositoryImpl};
 use crate::domain::repositories::tax_repository::TaxRepository;
@@ -147,6 +147,17 @@ async fn main() {
     let _notification_service = Arc::new(NotificationService::new().expect("Failed to initialize notification service"));
     tracing::info!("✅ Notification service initialized");
 
+    // Initialize WhatsApp service
+    let whatsapp_service = Arc::new(WhatsAppService::from_env());
+    tracing::info!("✅ WhatsApp service initialized");
+
+    // Initialize enhanced notification service
+    let enhanced_notification_service = Arc::new(EnhancedNotificationService::new(
+        email_service.clone(),
+        whatsapp_service.clone(),
+    ));
+    tracing::info!("✅ Enhanced notification service initialized");
+
     // Initialize monitoring service
     let monitoring_service = Arc::new(MonitoringService::new());
     tracing::info!("✅ Monitoring service initialized");
@@ -171,6 +182,8 @@ async fn main() {
         user_repo.clone(),
         pdf_service,
         email_service.clone(),
+        enhanced_notification_service.clone(),
+        whatsapp_service.clone(),
     ));
     let auth_service = Arc::new(AuthService::new(user_repo.clone(), email_service.clone(), jwt_secret));
     let report_service = match &redis_service {
@@ -198,6 +211,11 @@ async fn main() {
     let send_invoice_uc = Arc::new(SendInvoiceUseCase::new(invoice_service.clone()));
     let get_pdf_uc = Arc::new(GetInvoicePdfUseCase::new(invoice_service.clone()));
     let send_reminder_uc = Arc::new(SendReminderUseCase::new(invoice_service.clone()));
+    let send_invoice_whatsapp_uc = Arc::new(SendInvoiceWhatsappUseCase::new(invoice_service.clone()));
+    let mark_invoice_viewed_uc = Arc::new(MarkInvoiceViewedUseCase::new(invoice_service.clone()));
+    let send_payment_confirmation_uc = Arc::new(SendPaymentConfirmationUseCase::new(invoice_service.clone()));
+    let add_discussion_message_uc = Arc::new(AddDiscussionMessageUseCase::new(invoice_service.clone()));
+    let get_discussion_messages_uc = Arc::new(GetDiscussionMessagesUseCase::new(invoice_service.clone()));
 
     let register_uc = Arc::new(RegisterUserUseCase::new(auth_service.clone()));
     let login_uc = Arc::new(LoginUserUseCase::new(auth_service.clone()));
@@ -272,6 +290,18 @@ async fn main() {
         invoice_repo: Arc::new(invoice_repo_for_tax),
     };
 
+    // Guest state for guest checkout routes
+    // Need to create a separate invoice_repo reference for guest state
+    let guest_invoice_repo = InvoiceRepository::new(db_pool.clone(), tax_service.clone());
+    let guest_state = guest::GuestState {
+        invoice_repo: Arc::new(guest_invoice_repo),
+        payment_repo: Arc::new(payment_repo.clone()),
+        user_repo: Arc::new(user_repo.clone()),
+        invoice_service: invoice_service.clone(),
+        payment_gateway: payment_gateway_service.clone(),
+        notification_service: enhanced_notification_service.clone(),
+    };
+
     // Create main router with security layers
     let app = Router::new()
         .route("/health", get(health_check))
@@ -297,6 +327,11 @@ async fn main() {
                 send_invoice_uc,
                 get_pdf_uc,
                 send_reminder_uc,
+                send_invoice_whatsapp_uc,
+                mark_invoice_viewed_uc,
+                send_payment_confirmation_uc,
+                add_discussion_message_uc,
+                get_discussion_messages_uc,
             ))
             .nest("/reports", reports::create_router(
                 get_overview_stats_uc,
@@ -343,6 +378,7 @@ async fn main() {
             .nest("/files", files::create_router(file_service.clone()))
             .nest("/settings/tax", tax::create_settings_router(tax_state.clone()))
             .nest("/tax", tax::create_operations_router(tax_state))
+            .nest("/guest", guest::create_guest_router(guest_state))
         )
         // Metrics endpoint (public, no auth required)
         .nest("/metrics", metrics::create_router(

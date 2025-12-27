@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use redis::{Client, RedisError, AsyncCommands, aio::MultiplexedConnection};
 use serde::{Serialize, de::DeserializeOwned};
 

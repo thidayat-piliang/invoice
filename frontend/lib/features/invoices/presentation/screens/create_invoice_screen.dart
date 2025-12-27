@@ -20,9 +20,11 @@ class _CreateInvoiceScreenState extends ConsumerState<CreateInvoiceScreen> {
   final _priceController = TextEditingController();
   final _notesController = TextEditingController();
   final _termsController = TextEditingController(text: 'Payment due within 30 days');
+  final _minPaymentController = TextEditingController();
 
   DateTime _issueDate = DateTime.now();
   DateTime _dueDate = DateTime.now().add(const Duration(days: 30));
+  bool _allowPartialPayment = true;
 
   @override
   void initState() {
@@ -39,6 +41,7 @@ class _CreateInvoiceScreenState extends ConsumerState<CreateInvoiceScreen> {
     _priceController.dispose();
     _notesController.dispose();
     _termsController.dispose();
+    _minPaymentController.dispose();
     super.dispose();
   }
 
@@ -124,6 +127,9 @@ class _CreateInvoiceScreenState extends ConsumerState<CreateInvoiceScreen> {
 
     final quantity = double.tryParse(_quantityController.text) ?? 1.0;
     final price = double.tryParse(_priceController.text) ?? 0.0;
+    final minPayment = _minPaymentController.text.isNotEmpty
+        ? double.tryParse(_minPaymentController.text)
+        : null;
 
     final data = {
       'client_id': _selectedClientId,
@@ -134,15 +140,16 @@ class _CreateInvoiceScreenState extends ConsumerState<CreateInvoiceScreen> {
           'description': _descriptionController.text,
           'quantity': quantity,
           'unit_price': price,
-          'amount': quantity * price,
+          'tax_rate': 0.0,
         }
       ],
-      'subtotal': quantity * price,
-      'tax_amount': 0.0,
-      'discount_amount': 0.0,
-      'total_amount': quantity * price,
       'notes': _notesController.text,
       'terms': _termsController.text,
+      'discount_amount': 0.0,
+      'tax_included': false,
+      'send_immediately': false,
+      'allow_partial_payment': _allowPartialPayment,
+      if (minPayment != null) 'min_payment_amount': minPayment,
     };
 
     final success = await ref.read(invoiceProvider.notifier).createInvoice(data);
@@ -321,6 +328,60 @@ class _CreateInvoiceScreenState extends ConsumerState<CreateInvoiceScreen> {
                 hint: 'Payment terms',
                 maxLines: 2,
               ),
+              const SizedBox(height: 24),
+
+              // Partial Payment Settings
+              const Text(
+                'Partial Payment Settings',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Checkbox(
+                    value: _allowPartialPayment,
+                    onChanged: (value) {
+                      setState(() {
+                        _allowPartialPayment = value ?? true;
+                      });
+                    },
+                  ),
+                  const Text('Allow partial payments'),
+                ],
+              ),
+              const SizedBox(height: 8),
+              if (_allowPartialPayment) ...[
+                _buildTextField(
+                  label: 'Minimum Payment Amount (Optional)',
+                  controller: _minPaymentController,
+                  keyboardType: TextInputType.number,
+                  hint: '\$0.00 (leave empty for no minimum)',
+                ),
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.shade50,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.blue.shade200),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.info_outline, color: Colors.blue.shade700, size: 20),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'When enabled, buyers can pay any amount above the minimum (if set) until the full amount is paid.',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.blue.shade700,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
               const SizedBox(height: 32),
 
               // Actions

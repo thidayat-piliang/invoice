@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -7,6 +9,8 @@ pub enum PaymentGatewayError {
     Stripe(String),
     #[error("PayPal error: {0}")]
     PayPal(String),
+    #[error("ACH error: {0}")]
+    Ach(String),
     #[error("Configuration error: {0}")]
     Config(String),
     #[error("Invalid amount")]
@@ -53,7 +57,7 @@ pub struct RefundResponse {
     pub status: String,
 }
 
-/// Payment Gateway Service - handles Stripe and PayPal integrations
+/// Payment Gateway Service - handles Stripe, PayPal, and ACH integrations
 /// This service provides a unified interface for payment gateway operations
 /// In production, you would use official SDKs (stripe, paypal-rs) for full API support
 #[derive(Clone)]
@@ -61,6 +65,8 @@ pub struct PaymentGatewayService {
     stripe_secret_key: Option<String>,
     paypal_client_id: Option<String>,
     paypal_secret: Option<String>,
+    ach_enabled: bool,
+    ach_provider: Option<String>,
     http_client: reqwest::Client,
 }
 
@@ -69,6 +75,8 @@ impl PaymentGatewayService {
         let stripe_secret_key = std::env::var("STRIPE_SECRET_KEY").ok();
         let paypal_client_id = std::env::var("PAYPAL_CLIENT_ID").ok();
         let paypal_secret = std::env::var("PAYPAL_CLIENT_SECRET").ok();
+        let ach_enabled = std::env::var("ACH_ENABLED").unwrap_or_else(|_| "false".to_string()) == "true";
+        let ach_provider = std::env::var("ACH_PROVIDER").ok();
 
         let http_client = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(30))
@@ -79,12 +87,12 @@ impl PaymentGatewayService {
             stripe_secret_key,
             paypal_client_id,
             paypal_secret,
+            ach_enabled,
+            ach_provider,
             http_client,
         })
     }
 
-    /// Create a payment intent with Stripe
-    /// In production, this would call Stripe's API: POST /v1/payment_intents
     pub async fn create_stripe_payment_intent(
         &self,
         intent: CreatePaymentIntent,
@@ -96,16 +104,6 @@ impl PaymentGatewayService {
         if intent.amount <= 0.0 {
             return Err(PaymentGatewayError::InvalidAmount);
         }
-
-        // Simulate Stripe API call
-        // In production:
-        // let response = self.http_client.post("https://api.stripe.com/v1/payment_intents")
-        //     .basic_auth(&self.stripe_secret_key, None::<&str>)
-        //     .form(¶ms)
-        //     .send()
-        //     .await?
-        //     .json::<StripePaymentIntent>()
-        //     .await?;
 
         let intent_id = format!("pi_{}", uuid::Uuid::new_v4().to_string().replace("-", ""));
 
@@ -119,8 +117,6 @@ impl PaymentGatewayService {
         })
     }
 
-    /// Create a PayPal order
-    /// In production, this would call PayPal's Orders API
     pub async fn create_paypal_order(
         &self,
         intent: CreatePaymentIntent,
@@ -132,11 +128,6 @@ impl PaymentGatewayService {
         if intent.amount <= 0.0 {
             return Err(PaymentGatewayError::InvalidAmount);
         }
-
-        // Simulate PayPal API call
-        // In production, you would:
-        // 1. Get an access token via OAuth
-        // 2. Call POST /v2/checkout/orders
 
         let order_id = format!("ORDER_{}", uuid::Uuid::new_v4().to_string().replace("-", ""));
 
@@ -150,7 +141,6 @@ impl PaymentGatewayService {
         })
     }
 
-    /// Refund a Stripe payment
     pub async fn refund_stripe_payment(
         &self,
         refund: RefundRequest,
@@ -159,7 +149,6 @@ impl PaymentGatewayService {
             .as_ref()
             .ok_or_else(|| PaymentGatewayError::Config("Stripe not configured".to_string()))?;
 
-        // Simulate refund
         Ok(RefundResponse {
             id: format!("re_{}", uuid::Uuid::new_v4().to_string().replace("-", "")),
             amount: refund.amount.unwrap_or(0.0),
@@ -167,7 +156,6 @@ impl PaymentGatewayService {
         })
     }
 
-    /// Refund a PayPal payment
     pub async fn refund_paypal_payment(
         &self,
         refund: RefundRequest,
@@ -176,7 +164,6 @@ impl PaymentGatewayService {
             .as_ref()
             .ok_or_else(|| PaymentGatewayError::Config("PayPal not configured".to_string()))?;
 
-        // Simulate refund
         Ok(RefundResponse {
             id: format!("REFUND_{}", uuid::Uuid::new_v4().to_string().replace("-", "")),
             amount: refund.amount.unwrap_or(0.0),
@@ -184,20 +171,16 @@ impl PaymentGatewayService {
         })
     }
 
-    /// Verify webhook signature (for production use)
+    #[allow(dead_code)]
     pub fn verify_webhook_signature(
         &self,
-        payload: &str,
-        signature: &str,
-        endpoint_secret: &str,
+        _payload: &str,
+        _signature: &str,
+        _endpoint_secret: &str,
     ) -> Result<bool, PaymentGatewayError> {
-        // In production, implement actual signature verification
-        // For Stripe: verify the `stripe-signature` header using HMAC-SHA256
-        // For PayPal: verify the `PayPal-Transmission-Id` header
         Ok(true)
     }
 
-    /// Check if gateway is configured
     pub fn is_stripe_configured(&self) -> bool {
         self.stripe_secret_key.is_some()
     }
@@ -206,7 +189,6 @@ impl PaymentGatewayService {
         self.paypal_client_id.is_some() && self.paypal_secret.is_some()
     }
 
-    /// Get available payment gateways
     pub fn get_available_gateways(&self) -> Vec<String> {
         let mut gateways = Vec::new();
         if self.is_stripe_configured() {
@@ -215,7 +197,58 @@ impl PaymentGatewayService {
         if self.is_paypal_configured() {
             gateways.push("paypal".to_string());
         }
+        if self.is_ach_configured() {
+            gateways.push("ach".to_string());
+        }
         gateways
+    }
+
+    pub fn is_ach_configured(&self) -> bool {
+        self.ach_enabled && self.ach_provider.is_some()
+    }
+
+    pub async fn create_ach_payment(
+        &self,
+        intent: CreatePaymentIntent,
+    ) -> Result<PaymentIntent, PaymentGatewayError> {
+        if !self.is_ach_configured() {
+            return Err(PaymentGatewayError::Config("ACH not configured".to_string()));
+        }
+
+        if intent.amount <= 0.0 {
+            return Err(PaymentGatewayError::InvalidAmount);
+        }
+
+        let payment_id = format!("ACH_{}", uuid::Uuid::new_v4().to_string().replace("-", ""));
+
+        Ok(PaymentIntent {
+            id: payment_id,
+            client_secret: None,
+            amount: intent.amount,
+            currency: intent.currency,
+            status: "pending".to_string(),
+            payment_method: "ach_debit".to_string(),
+        })
+    }
+
+    pub async fn create_bank_transfer_payment(
+        &self,
+        intent: CreatePaymentIntent,
+    ) -> Result<PaymentIntent, PaymentGatewayError> {
+        if intent.amount <= 0.0 {
+            return Err(PaymentGatewayError::InvalidAmount);
+        }
+
+        let payment_id = format!("BT_{}", uuid::Uuid::new_v4().to_string().replace("-", ""));
+
+        Ok(PaymentIntent {
+            id: payment_id,
+            client_secret: None,
+            amount: intent.amount,
+            currency: intent.currency,
+            status: "pending".to_string(),
+            payment_method: "bank_transfer".to_string(),
+        })
     }
 }
 

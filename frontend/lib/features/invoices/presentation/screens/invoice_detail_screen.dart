@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:intl/intl.dart';
 import '../providers/invoice_provider.dart';
 import '../../../../shared/widgets/empty_state.dart';
+import '../../../../shared/widgets/discussion_bottom_sheet.dart';
+import '../../../../app/theme/app_theme.dart';
 
 class InvoiceDetailScreen extends ConsumerStatefulWidget {
   final String invoiceId;
@@ -65,58 +68,152 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
   }
 
   Future<void> _recordPayment() async {
+    final invoiceState = ref.read(invoiceProvider);
+    final invoice = invoiceState.selectedInvoice;
+    if (invoice == null) return;
+
     final amountController = TextEditingController();
-    final methodController = TextEditingController(text: 'Cash');
     final notesController = TextEditingController();
+    String paymentMethod = 'PayPal';
 
     final result = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Record Payment'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: amountController,
-                decoration: const InputDecoration(
-                  labelText: 'Amount *',
-                  prefixText: '\$',
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          title: const Text('Record Payment'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Partial payment info
+                if (invoice.allowPartialPayment) ...[
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: Colors.orange.shade50,
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: Colors.orange.shade200),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.info_outline, color: Colors.orange.shade700, size: 18),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Partial payments allowed${invoice.minPaymentAmount != null ? ' (min: \$${invoice.minPaymentAmount!.toStringAsFixed(2)})' : ''}',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.orange.shade700,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                ],
+                TextField(
+                  controller: amountController,
+                  decoration: InputDecoration(
+                    labelText: 'Amount *',
+                    prefixText: '\$',
+                    helperText: 'Balance due: \$${invoice.balanceDue.toStringAsFixed(2)}',
+                  ),
+                  keyboardType: TextInputType.number,
                 ),
-                keyboardType: TextInputType.number,
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: methodController,
-                decoration: const InputDecoration(
-                  labelText: 'Payment Method *',
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  value: paymentMethod,
+                  decoration: const InputDecoration(
+                    labelText: 'Payment Method *',
+                  ),
+                  items: const [
+                    DropdownMenuItem(value: 'PayPal', child: Text('PayPal')),
+                    DropdownMenuItem(value: 'Stripe', child: Text('Stripe')),
+                    DropdownMenuItem(value: 'AchDebit', child: Text('ACH Debit')),
+                    DropdownMenuItem(value: 'BankTransfer', child: Text('Bank Transfer')),
+                    DropdownMenuItem(value: 'Cash', child: Text('Cash')),
+                    DropdownMenuItem(value: 'Check', child: Text('Check')),
+                  ],
+                  onChanged: (value) {
+                    if (value != null) {
+                      setState(() {
+                        paymentMethod = value;
+                      });
+                    }
+                  },
                 ),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: notesController,
-                decoration: const InputDecoration(
-                  labelText: 'Notes (optional)',
+                const SizedBox(height: 12),
+                TextField(
+                  controller: notesController,
+                  decoration: const InputDecoration(
+                    labelText: 'Notes (optional)',
+                  ),
+                  maxLines: 2,
                 ),
-                maxLines: 2,
-              ),
-            ],
+              ],
+            ),
           ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              if (amountController.text.isNotEmpty) {
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                // Validate amount
+                final amount = double.tryParse(amountController.text);
+                if (amount == null || amount <= 0) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Please enter a valid amount'),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                  return;
+                }
+
+                // Validate minimum payment
+                if (invoice.minPaymentAmount != null && amount < invoice.minPaymentAmount!) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Minimum payment is \$${invoice.minPaymentAmount!.toStringAsFixed(2)}'),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                  return;
+                }
+
+                // Validate partial payment setting
+                if (!invoice.allowPartialPayment && amount < invoice.balanceDue) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('This invoice requires full payment'),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                  return;
+                }
+
+                // Validate amount doesn't exceed balance
+                if (amount > invoice.balanceDue) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Amount exceeds balance due (\$${invoice.balanceDue.toStringAsFixed(2)})'),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                  return;
+                }
+
                 Navigator.of(context).pop(true);
-              }
-            },
-            child: const Text('Record'),
-          ),
-        ],
+              },
+              child: const Text('Record'),
+            ),
+          ],
+        ),
       ),
     );
 
@@ -125,7 +222,7 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
         widget.invoiceId,
         {
           'amount': double.parse(amountController.text),
-          'payment_method': methodController.text,
+          'payment_method': paymentMethod,
           'notes': notesController.text.isEmpty ? null : notesController.text,
         },
       );
@@ -138,6 +235,71 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
         );
         // Refresh invoice details
         ref.read(invoiceProvider.notifier).loadInvoice(widget.invoiceId);
+      }
+    }
+  }
+
+  Future<void> _sendWhatsApp() async {
+    final success = await ref.read(invoiceProvider.notifier).sendInvoiceWhatsapp(widget.invoiceId);
+    if (success && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Invoice sent via WhatsApp!'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Failed to send WhatsApp message'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  Future<void> _sendPaymentConfirmation() async {
+    final invoiceState = ref.read(invoiceProvider);
+    final invoice = invoiceState.selectedInvoice;
+    if (invoice == null) return;
+
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Send Payment Confirmation'),
+        content: Text(
+          'Send payment confirmation to ${invoice.clientName}?\n\n'
+          'Email: ${invoice.clientEmail ?? 'N/A'}\n'
+          'Phone: ${invoice.clientPhone ?? 'N/A'}',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Send'),
+          ),
+        ],
+      ),
+    );
+
+    if (result == true) {
+      final success = await ref.read(invoiceProvider.notifier).sendPaymentConfirmation(
+        widget.invoiceId,
+        {
+          'send_email': invoice.clientEmail != null,
+          'send_whatsapp': invoice.clientPhone != null,
+        },
+      );
+      if (success && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Payment confirmation sent!'),
+            backgroundColor: Colors.green,
+          ),
+        );
       }
     }
   }
@@ -213,6 +375,11 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
   }
 
   Widget _buildHeader(InvoiceDetail invoice) {
+    // Check if invoice has read tracking info (from InvoiceDetail model)
+    // Note: We need to update InvoiceDetail model to include viewedAt and sentAt
+    final hasViewedAt = false; // Will be updated when model is updated
+    final hasSentAt = false;
+
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -264,6 +431,32 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
                 ),
               ],
             ),
+            // Read Receipt Indicator
+            if (invoice.status == 'viewed') ...[
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: Colors.blue.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.visibility, color: Colors.blue, size: 18),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        '✓ Client has viewed this invoice',
+                        style: TextStyle(
+                          color: Colors.blue.shade800,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ],
         ),
       ),
@@ -404,6 +597,57 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
               const SizedBox(height: 8),
               _buildTotalRow('Balance Due', invoice.balanceDue, isBold: true, color: Colors.orange),
             ],
+            // Partial payment info
+            if (invoice.allowPartialPayment || invoice.isPartial) ...[
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: Colors.orange.shade50,
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(color: Colors.orange.shade200),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(Icons.info_outline, color: Colors.orange.shade700, size: 16),
+                        const SizedBox(width: 6),
+                        Text(
+                          'Partial Payment',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w600,
+                            color: Colors.orange.shade700,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      invoice.allowPartialPayment
+                          ? 'Buyers can pay in installments${invoice.minPaymentAmount != null ? ' (min: \$${invoice.minPaymentAmount!.toStringAsFixed(2)})' : ''}'
+                          : 'Full payment required',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.orange.shade700,
+                      ),
+                    ),
+                    if (invoice.partialPaymentCount > 0) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        'Payments made: ${invoice.partialPaymentCount}',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.orange.shade700,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
           ],
         ),
       ),
@@ -438,6 +682,7 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
   Widget _buildActions(InvoiceDetail invoice) {
     return Column(
       children: [
+        // Row 1: Back and Send
         Row(
           children: [
             Expanded(
@@ -450,14 +695,63 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
             const SizedBox(width: 12),
             Expanded(
               child: ElevatedButton.icon(
-                onPressed: _sendReminder,
+                onPressed: () => context.go('/invoices/send/${widget.invoiceId}'),
                 icon: const Icon(Icons.send),
-                label: const Text('Reminder'),
+                label: const Text('Send'),
               ),
             ),
           ],
         ),
         const SizedBox(height: 12),
+
+        // Row 2: Reminder and WhatsApp
+        Row(
+          children: [
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: _sendReminder,
+                icon: const Icon(Icons.notifications),
+                label: const Text('Reminder'),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: _sendWhatsApp,
+                icon: const Icon(Icons.whatsapp),
+                label: const Text('WhatsApp'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.green,
+                  side: const BorderSide(color: Colors.green),
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+
+        // Row 2.5: Discussion
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            onPressed: () {
+              showDiscussionBottomSheet(
+                context,
+                invoiceId: widget.invoiceId,
+                clientName: invoice.clientName,
+              );
+            },
+            icon: const Icon(Icons.chat),
+            label: const Text('Discussion / Notes'),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: Colors.blue,
+              side: const BorderSide(color: Colors.blue),
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+
+        // Row 3: PDF and Download
         Row(
           children: [
             Expanded(
@@ -478,6 +772,25 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
           ],
         ),
         const SizedBox(height: 12),
+
+        // Payment Confirmation (if paid)
+        if (invoice.status == 'paid') ...[
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: _sendPaymentConfirmation,
+              icon: const Icon(Icons.check_circle),
+              label: const Text('Send Payment Confirmation'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: AppTheme.primaryColor,
+                side: BorderSide(color: AppTheme.primaryColor),
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+        ],
+
+        // Record Payment
         if (invoice.balanceDue > 0)
           SizedBox(
             width: double.infinity,
@@ -487,6 +800,7 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
               label: const Text('Record Payment'),
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.green,
+                foregroundColor: Colors.white,
               ),
             ),
           ),
