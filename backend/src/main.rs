@@ -28,6 +28,9 @@ use crate::domain::repositories::tax_repository::TaxRepository;
 
 #[tokio::main]
 async fn main() {
+    // Load .env file if it exists
+    dotenvy::dotenv().ok();
+
     // Initialize logging
     tracing_subscriber::registry()
         .with(
